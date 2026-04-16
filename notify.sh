@@ -13,6 +13,7 @@ GOTIFY_URL="${GOTIFY_URL:-}"
 GOTIFY_TOKEN="${GOTIFY_TOKEN:-}"
 GOTIFY_PRIORITY="${GOTIFY_PRIORITY:-5}"
 NOTIFY_DEDUPE_WINDOW="${NOTIFY_DEDUPE_WINDOW:-90}"
+NOTIFY_TAIL_LINES="${NOTIFY_TAIL_LINES:-0}"
 
 declare -A PLAYER_NAMES=()
 declare -A RECENT_EVENTS=()
@@ -53,6 +54,8 @@ Environment:
   GOTIFY_URL=https://gotify.example.com
   GOTIFY_TOKEN=your_app_token
   GOTIFY_PRIORITY=5
+  NOTIFY_DEDUPE_WINDOW=90
+  NOTIFY_TAIL_LINES=0
 EOF
 }
 
@@ -166,13 +169,40 @@ extract_name() {
   printf '%s' "$(trim "$name")"
 }
 
+is_raw_identifier() {
+  local value="$1"
+
+  [[ -z "$value" ]] && return 0
+  [[ "$value" =~ ^[A-F0-9]{16,}$ ]] && return 0
+  [[ "$value" =~ ^DESKTOP-[A-Z0-9-]+$ ]] && return 0
+  [[ "$value" =~ ^[A-Z0-9._-]+-[A-F0-9]{12,}$ ]] && return 0
+  return 1
+}
+
 remember_player_name() {
   local uid="$1"
   local name="$2"
 
-  if [[ -n "$uid" && -n "$name" && "$name" != "Unknown player" ]]; then
+  if [[ -n "$uid" && -n "$name" && "$name" != "Unknown player" ]] && ! is_raw_identifier "$name"; then
     PLAYER_NAMES["$uid"]="$name"
   fi
+}
+
+resolve_player_label() {
+  local uid="$1"
+  local who="$2"
+
+  if [[ -n "$who" ]] && ! is_raw_identifier "$who"; then
+    printf '%s' "$who"
+    return
+  fi
+
+  if [[ -n "$uid" && -n "${PLAYER_NAMES[$uid]:-}" ]] && ! is_raw_identifier "${PLAYER_NAMES[$uid]}"; then
+    printf '%s' "${PLAYER_NAMES[$uid]}"
+    return
+  fi
+
+  printf '%s' "Player"
 }
 
 should_send_event() {
@@ -192,7 +222,7 @@ should_send_event() {
 
 parse_line() {
   local raw_line="$1"
-  local line uid who event_key
+  local line uid who label event_key
   local server_name="${SERVER_NAME:-Windrose Server}"
 
   line="$(normalize_line "$raw_line")"
@@ -201,29 +231,30 @@ parse_line() {
   uid="$(extract_uid "$line")"
   who="$(extract_name "$line")"
   remember_player_name "$uid" "$who"
-
-  if [[ -z "$who" && -n "$uid" && -n "${PLAYER_NAMES[$uid]:-}" ]]; then
-    who="${PLAYER_NAMES[$uid]}"
-  fi
+  label="$(resolve_player_label "$uid" "$who")"
 
   if [[ "$line" == *"DisconnectAccount"* || "$line" == *"graceful close timed out"* || "$line" == *" disconnected"* ]]; then
-    [[ -z "$who" && -n "$uid" ]] && who="$uid"
-    [[ -z "$who" ]] && who="Unknown player"
-    event_key="disconnect:${uid:-$who}"
+    if [[ "$label" == "Player" ]]; then
+      event_key="disconnect:unknown"
+    else
+      event_key="disconnect:${uid:-$label}"
+    fi
 
     if should_send_event "$event_key"; then
-      send_notification "⚓ $who disconnected from $server_name"
+      send_notification "⚓ $label disconnected from $server_name"
     fi
     return
   fi
 
   if [[ "$line" == *" joined"* || "$line" == *" connected"* ]]; then
-    [[ -z "$who" && -n "$uid" ]] && who="$uid"
-    [[ -z "$who" ]] && who="Player"
-    event_key="join:${uid:-$who}"
+    if [[ "$label" == "Player" ]]; then
+      event_key="join:${uid:-unknown}"
+    else
+      event_key="join:${uid:-$label}"
+    fi
 
     if should_send_event "$event_key"; then
-      send_notification "⚓ $who joined $server_name"
+      send_notification "⚓ $label joined $server_name"
     fi
   fi
 }
@@ -236,7 +267,7 @@ main() {
 
   init_docker_cmd
   echo "[notify] Watching $SERVICE_NAME logs for player activity via $(resolve_provider)..."
-  "${DOCKER_CMD[@]}" compose -f "$SCRIPT_DIR/docker-compose.yml" logs --tail=0 -f "$SERVICE_NAME" | while IFS= read -r line; do
+  "${DOCKER_CMD[@]}" compose -f "$SCRIPT_DIR/docker-compose.yml" logs --tail="$NOTIFY_TAIL_LINES" -f "$SERVICE_NAME" | while IFS= read -r line; do
     parse_line "$line"
   done
 }
