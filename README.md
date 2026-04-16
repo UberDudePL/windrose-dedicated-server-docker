@@ -19,6 +19,13 @@ Self-hosted dedicated server for [Windrose](https://store.steampowered.com/app/2
 - Log rotation (20 MB × 5 files)
 - Anonymous SteamCMD login by default
 
+### New in v1.1.0
+
+- Best-effort activity notifications via Discord or Gotify
+- Improved helper launcher for easier day-to-day server management
+- Official WineHQ packages in the Docker image for better runtime consistency
+- Faster GitHub image builds with better caching for repeated CI runs
+
 ---
 
 ## Requirements
@@ -61,7 +68,7 @@ docker compose logs -f windrose
 Recommended image tags:
 
 ```text
-Stable: ghcr.io/uberdudepl/windrose-dedicated-server-docker:v1.0.3
+Stable: ghcr.io/uberdudepl/windrose-dedicated-server-docker:v1.1.0
 Latest: ghcr.io/uberdudepl/windrose-dedicated-server-docker:latest
 ```
 
@@ -69,7 +76,7 @@ Set the image version in `.env` with:
 
 ```dotenv
 IMAGE_REPOSITORY=ghcr.io/uberdudepl/windrose-dedicated-server-docker
-IMAGE_TAG=v1.0.3
+IMAGE_TAG=v1.1.0
 ```
 
 ### Optional: development mode
@@ -139,7 +146,7 @@ MULTIHOME=0.0.0.0
 | `CONTAINER_NAME` | `windrose` | Change only if you run more than one server on the same host |
 | `HOSTNAME` | `windrose` | Internal container hostname |
 | `IMAGE_REPOSITORY` | GHCR repo | Published image repository |
-| `IMAGE_TAG` | `v1.0.3` | Stable image tag to run |
+| `IMAGE_TAG` | `v1.1.0` | Stable image tag to run |
 | `PUID` | `1000` | User id used for mounted files |
 | `PGID` | `1000` | Group id used for mounted files |
 | `UPDATE_ON_START` | `true` | Update and validate server files on startup |
@@ -307,7 +314,7 @@ windrose/
 
 ## Image versions
 
-- Most users should keep `IMAGE_TAG=v1.0.3` for a stable server.
+- Most users should keep `IMAGE_TAG=v1.1.0` for a stable server.
 - Use `latest` only for testing.
 - To upgrade later, change `IMAGE_TAG` in `.env`, then run:
 
