@@ -73,6 +73,7 @@ Usage:
   $SELF_NAME restart
   $SELF_NAME status
   $SELF_NAME logs
+  $SELF_NAME notify
   $SELF_NAME pull
   $SELF_NAME update
   $SELF_NAME down
@@ -114,6 +115,11 @@ status_server() {
 follow_logs() {
     echo "[windrose] Following logs..."
     dc logs -f "$SERVICE_NAME"
+}
+
+run_notifier() {
+    echo "[windrose] Starting activity notifier..."
+    exec "$SCRIPT_DIR/notify.sh"
 }
 
 pull_image() {
@@ -166,6 +172,9 @@ case "${1:-help}" in
         ;;
     logs)
         follow_logs
+        ;;
+    notify)
+        run_notifier
         ;;
     pull)
         pull_image

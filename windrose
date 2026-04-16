@@ -1,3 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export WINDROSE_CMD_NAME="$(basename "$0")"
 exec "/windrose/serverctl.sh" "$@"

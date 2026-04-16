@@ -213,6 +213,7 @@ chmod +x ./windrose ./serverctl.sh
 ./windrose status
 ./windrose logs
 ./windrose update
+./windrose notify
 ```
 
 Optional system-wide install:
@@ -221,6 +222,32 @@ Optional system-wide install:
 sudo ln -sf "$PWD/windrose" /usr/local/bin/windrosectl
 windrosectl start
 ```
+
+---
+
+## Activity notifications: Discord or Gotify
+
+A basic log watcher is included for best-effort player activity notifications.
+
+1. Choose a notification backend in `.env`:
+
+```dotenv
+NOTIFY_PROVIDER=auto
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
+GOTIFY_URL=https://gotify.example.com
+GOTIFY_TOKEN=your_app_token
+GOTIFY_PRIORITY=5
+```
+
+If `NOTIFY_PROVIDER=auto`, the script prefers Gotify when it is configured, otherwise it falls back to Discord.
+
+2. Start the watcher in a separate shell:
+
+```bash
+./windrose notify
+```
+
+At the moment this is log-based and best-effort. Disconnect events are easier to detect reliably than joins, so treat it as a lightweight helper rather than a perfect audit system.
 
 ---
 
