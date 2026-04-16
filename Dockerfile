@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -9,17 +10,13 @@ ENV WINEDEBUG=-all
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 
-RUN dpkg --add-architecture i386 && \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    dpkg --add-architecture i386 && \
     mkdir -pm755 /etc/apt/keyrings && \
-    apt-get update && \
+    apt-get update -o Acquire::Retries=5 && \
     apt-get install -y --no-install-recommends \
-      wget gpg ca-certificates && \
-    wget -O /etc/apt/keyrings/winehq-archive.key https://dl.winehq.org/wine-builds/winehq.key && \
-    wget -NP /etc/apt/sources.list.d/ https://dl.winehq.org/wine-builds/ubuntu/dists/jammy/winehq-jammy.sources && \
-    apt-get update && \
-    apt-get install -y --install-recommends \
-      winehq-stable \
-      curl ca-certificates \
+      wget gpg ca-certificates curl \
       xvfb xauth \
       winbind \
       lib32gcc-s1 lib32stdc++6 \
@@ -27,8 +24,12 @@ RUN dpkg --add-architecture i386 && \
       libncurses6:i386 libtinfo6:i386 \
       locales \
       jq \
-      procps \
-    && rm -rf /var/lib/apt/lists/*
+      procps && \
+    wget -O /etc/apt/keyrings/winehq-archive.key https://dl.winehq.org/wine-builds/winehq.key && \
+    wget -NP /etc/apt/sources.list.d/ https://dl.winehq.org/wine-builds/ubuntu/dists/jammy/winehq-jammy.sources && \
+    apt-get update -o Acquire::Retries=5 && \
+    apt-get install -y --install-recommends winehq-stable && \
+    rm -rf /var/lib/apt/lists/*
 
 RUN sed -i 's/^# \(en_US.UTF-8 UTF-8\)/\1/' /etc/locale.gen && locale-gen
 

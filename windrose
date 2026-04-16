@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 export WINDROSE_CMD_NAME="$(basename "$0")"
-exec "/windrose/serverctl.sh" "$@"
+export WINDROSE_MODE="${WINDROSE_MODE:-dev}"
+exec "$SCRIPT_DIR/serverctl.sh" "$@"
