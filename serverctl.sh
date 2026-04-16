@@ -1,7 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+resolve_script_dir() {
+    local src="${BASH_SOURCE[0]}"
+
+    while [[ -h "$src" ]]; do
+        local dir
+        dir="$(cd -P -- "$(dirname -- "$src")" && pwd)"
+        src="$(readlink "$src")"
+        [[ "$src" != /* ]] && src="$dir/$src"
+    done
+
+    cd -P -- "$(dirname -- "$src")" && pwd
+}
+
+SCRIPT_DIR="$(resolve_script_dir)"
 COMPOSE_DIR="${COMPOSE_DIR:-$SCRIPT_DIR}"
 SERVICE_NAME="${SERVICE_NAME:-windrose}"
 MODE="${WINDROSE_MODE:-auto}"
@@ -196,7 +209,7 @@ install_self() {
     cat > "$target" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
-exec "$SCRIPT_DIR/serverctl.sh" "\$@"
+exec "$SCRIPT_DIR/windrose" "\$@"
 EOF
     chmod +x "$target"
     echo "[windrose] Installed launcher at $target"

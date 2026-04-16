@@ -228,9 +228,11 @@ chmod +x ./windrose ./serverctl.sh
 Optional system-wide install:
 
 ```bash
-sudo ln -sf "$PWD/windrose" /usr/local/bin/windrosectl
+./windrose install /usr/local/bin/windrosectl
 windrosectl start
 ```
+
+If you want the plain command name instead, install it as `/usr/local/bin/windrose`.
 
 ---
 
