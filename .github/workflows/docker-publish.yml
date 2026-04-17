@@ -67,8 +67,8 @@ jobs:
       - name: Compute tags
         id: tags
         run: |
-          owner_lc="${GITHUB_REPOSITORY_OWNER,,}"
-          image="ghcr.io/${owner_lc}/windrose-dedicated-server-docker"
+          repo_lc="${GITHUB_REPOSITORY,,}"
+          image="ghcr.io/${repo_lc}"
           ref_name="${GITHUB_REF_NAME}"
           tags="${image}:${ref_name}${{ matrix.tag_suffix }}"
 
