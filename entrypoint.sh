@@ -21,7 +21,7 @@ SERVER_NOTE=${SERVER_NOTE:-}
 SERVER_PASSWORD=${SERVER_PASSWORD:-}
 MAX_PLAYERS=${MAX_PLAYERS:-4}
 P2P_PROXY_ADDRESS=${P2P_PROXY_ADDRESS:-127.0.0.1}
-FIRST_RUN_TIMEOUT=${FIRST_RUN_TIMEOUT:-120}
+FIRST_RUN_TIMEOUT=${FIRST_RUN_TIMEOUT:-300}
 
 SERVER_PID=""
 XVFB_PID=""
@@ -36,7 +36,37 @@ quote() {
 }
 
 run_as_steam() {
-  su -s /bin/bash steam -c "$*"
+  HOME="$STEAM_HOME" DISPLAY="${DISPLAY:-:99}" WINEPREFIX="$WINEPREFIX" \
+    su -m -s /bin/bash steam -c "$*"
+}
+
+wine_prefix_ready() {
+  [[ -f "$WINEPREFIX/system.reg" && -f "$WINEPREFIX/drive_c/windows/system32/kernel32.dll" ]] || return 1
+  run_as_steam "wine cmd /c exit 0 >/tmp/windrose-winecheck.log 2>&1"
+}
+
+print_log_file() {
+  local label="$1"
+  local file="$2"
+
+  if [[ -f "$file" ]]; then
+    log "$label"
+    tail -n 120 "$file" || true
+  fi
+}
+
+check_free_space() {
+  local path="$1"
+  local min_mb="$2"
+  local avail_kb avail_mb
+
+  avail_kb="$(df -Pk "$path" | awk 'NR==2 {print $4}')"
+  avail_mb=$((avail_kb / 1024))
+
+  if (( avail_mb < min_mb )); then
+    log "ERROR: low disk space at $path (${avail_mb} MB free). Free at least ${min_mb} MB and start the container again."
+    exit 70
+  fi
 }
 
 ensure_user_mapping() {
@@ -81,10 +111,30 @@ init_wine() {
   mkdir -p "$WINEPREFIX"
   chown -R steam:steam "$STEAM_HOME" 2>/dev/null || true
 
-  if [ ! -f "$WINEPREFIX/system.reg" ]; then
-    log "Initializing Wine prefix"
-    run_as_steam "WINEPREFIX=$(quote "$WINEPREFIX") wineboot -i >/dev/null 2>&1 || true"
+  if wine_prefix_ready; then
+    return
   fi
+
+  for attempt in 1 2; do
+    if [[ "$attempt" -eq 1 ]]; then
+      log "Initializing Wine prefix"
+    else
+      log "Wine prefix looks incomplete, rebuilding it"
+      rm -rf "$WINEPREFIX"
+      mkdir -p "$WINEPREFIX"
+      chown -R steam:steam "$STEAM_HOME" 2>/dev/null || true
+    fi
+
+    run_as_steam "wineboot --init >/tmp/windrose-wineboot.log 2>&1 || true; wineserver -w >/dev/null 2>&1 || true"
+
+    if wine_prefix_ready; then
+      return
+    fi
+  done
+
+  log "ERROR: Wine prefix initialization failed"
+  print_log_file "Recent Wine boot log:" "/tmp/windrose-wineboot.log"
+  exit 1
 }
 
 update_server() {
@@ -133,6 +183,7 @@ first_run_generate_config() {
 
   if [ ! -f "$SERVER_DESC" ]; then
     log "ServerDescription.json was not generated during first run"
+    print_log_file "Recent first-run log:" "/tmp/windrose-first-run.log"
   fi
 }
 
@@ -180,12 +231,22 @@ start_server() {
   log "Starting Windrose dedicated server"
   log "Executable: $exe"
 
-  run_as_steam "WINEPREFIX=$(quote "$WINEPREFIX") wine $(quote "$exe") -log -MULTIHOME=$(quote "$MULTIHOME") -PORT=$(quote "$PORT") -QUERYPORT=$(quote "$QUERYPORT")" &
+  run_as_steam "wine $(quote "$exe") -log -MULTIHOME=$(quote "$MULTIHOME") -PORT=$(quote "$PORT") -QUERYPORT=$(quote "$QUERYPORT")" &
   SERVER_PID=$!
-  wait "$SERVER_PID"
+
+  if wait "$SERVER_PID"; then
+    return 0
+  else
+    local exit_code=$?
+    log "Windrose dedicated server exited with code $exit_code"
+    print_log_file "Recent Steam stderr log:" "$STEAM_HOME/Steam/logs/stderr.txt"
+    return "$exit_code"
+  fi
 }
 
 ensure_user_mapping
+check_free_space "$SERVERDIR" 512
+check_free_space "$STEAM_HOME" 512
 init_xvfb
 init_wine
 update_server
