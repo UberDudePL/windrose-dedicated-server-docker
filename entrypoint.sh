@@ -26,7 +26,6 @@ P2P_PROXY_ADDRESS=${P2P_PROXY_ADDRESS:-127.0.0.1}
 FIRST_RUN_TIMEOUT=${FIRST_RUN_TIMEOUT:-300}
 
 SERVER_PID=""
-XVFB_PID=""
 SERVER_DESC="$SERVERDIR/R5/ServerDescription.json"
 
 log() {
@@ -40,6 +39,10 @@ quote() {
 run_as_steam() {
   HOME="$STEAM_HOME" DISPLAY="${DISPLAY:-:99}" WINEPREFIX="$WINEPREFIX" WINEARCH="$WINEARCH" WINEDLLOVERRIDES="$WINEDLLOVERRIDES" \
     su -m -s /bin/bash steam -c "$*"
+}
+
+run_wine_as_steam() {
+  run_as_steam "xvfb-run --auto-servernum --server-args='-screen 0 1024x768x16 -nolisten tcp' bash -lc $(quote "$*")"
 }
 
 wine_prefix_ready() {
@@ -79,12 +82,6 @@ ensure_user_mapping() {
   chown -R steam:steam /opt/steamcmd "$STEAM_HOME" "$SERVERDIR" 2>/dev/null || true
 }
 
-cleanup_xvfb() {
-  if [ -n "$XVFB_PID" ] && kill -0 "$XVFB_PID" 2>/dev/null; then
-    kill "$XVFB_PID" 2>/dev/null || true
-  fi
-}
-
 shutdown_server() {
   log "Stopping Windrose dedicated server"
   pkill -TERM -u steam -f 'WindroseServer-Win64-Shipping.exe' 2>/dev/null || true
@@ -101,13 +98,6 @@ shutdown_server() {
 }
 
 trap 'shutdown_server; exit 0' TERM INT
-trap 'cleanup_xvfb' EXIT
-
-init_xvfb() {
-  rm -f /tmp/.X99-lock || true
-  Xvfb :99 -screen 0 1024x768x16 -nolisten tcp >/dev/null 2>&1 &
-  XVFB_PID=$!
-}
 
 init_wine() {
   mkdir -p "$WINEPREFIX"
@@ -131,7 +121,7 @@ init_wine() {
 
     log "Starting wineboot init (will timeout after 120s)..."
     local start_time=$SECONDS
-    run_as_steam "timeout 120 bash -c 'winecfg -v win10 >/tmp/windrose-wineboot.log 2>&1 || true; wineboot --init >>/tmp/windrose-wineboot.log 2>&1 || true; wineserver -w >/dev/null 2>&1 || true'" || true
+    run_wine_as_steam "timeout 120 bash -c 'winecfg -v win10 >/tmp/windrose-wineboot.log 2>&1 || true; wineboot --init >>/tmp/windrose-wineboot.log 2>&1 || true; wineserver -w >/dev/null 2>&1 || true'" || true
     local elapsed=$((SECONDS - start_time))
     log "wineboot completed in ${elapsed}s"
 
@@ -180,7 +170,7 @@ first_run_generate_config() {
   fi
 
   log "First run detected, generating default server config"
-  run_as_steam "WINEPREFIX=$(quote "$WINEPREFIX") wine $(quote "$exe") -log -MULTIHOME=$(quote "$MULTIHOME") -PORT=$(quote "$PORT") -QUERYPORT=$(quote "$QUERYPORT") >/tmp/windrose-first-run.log 2>&1" &
+  run_wine_as_steam "WINEPREFIX=$(quote "$WINEPREFIX") wine $(quote "$exe") -log -MULTIHOME=$(quote "$MULTIHOME") -PORT=$(quote "$PORT") -QUERYPORT=$(quote "$QUERYPORT") >/tmp/windrose-first-run.log 2>&1" &
   local warmup_pid=$!
 
   local count=0
@@ -243,7 +233,7 @@ start_server() {
   log "Starting Windrose dedicated server"
   log "Executable: $exe"
 
-  run_as_steam "wine $(quote "$exe") -log -MULTIHOME=$(quote "$MULTIHOME") -PORT=$(quote "$PORT") -QUERYPORT=$(quote "$QUERYPORT")" &
+  run_wine_as_steam "wine $(quote "$exe") -log -MULTIHOME=$(quote "$MULTIHOME") -PORT=$(quote "$PORT") -QUERYPORT=$(quote "$QUERYPORT")" &
   SERVER_PID=$!
 
   if wait "$SERVER_PID"; then
@@ -290,7 +280,6 @@ start_server_with_kernel_retry() {
 ensure_user_mapping
 check_free_space "$SERVERDIR" 512
 check_free_space "$STEAM_HOME" 512
-init_xvfb
 init_wine
 update_server
 
