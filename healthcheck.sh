@@ -4,6 +4,7 @@ set -euo pipefail
 SERVERDIR=${SERVERDIR:-/data}
 PORT=${PORT:-7777}
 QUERYPORT=${QUERYPORT:-7778}
+HEALTHCHECK_REQUIRE_UDP=${HEALTHCHECK_REQUIRE_UDP:-false}
 SERVER_DESC="$SERVERDIR/R5/ServerDescription.json"
 
 log() {
@@ -37,9 +38,11 @@ if [[ ! -d "$SERVERDIR/R5" ]]; then
   exit 1
 fi
 
-if ! check_udp_port "$PORT" && ! check_udp_port "$QUERYPORT"; then
-  log "neither UDP port $PORT nor $QUERYPORT is listening yet"
-  exit 1
+if [[ "$HEALTHCHECK_REQUIRE_UDP" == "true" ]]; then
+  if ! check_udp_port "$PORT" && ! check_udp_port "$QUERYPORT"; then
+    log "neither UDP port $PORT nor $QUERYPORT is listening yet"
+    exit 1
+  fi
 fi
 
 if [[ -f "$SERVER_DESC" ]]; then
