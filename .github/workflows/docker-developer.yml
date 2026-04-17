@@ -65,7 +65,8 @@ jobs:
       - name: Compute tags
         id: tags
         run: |
-          image="ghcr.io/${GITHUB_REPOSITORY_OWNER}/windrose-dedicated-server-docker"
+          owner_lc="${GITHUB_REPOSITORY_OWNER,,}"
+          image="ghcr.io/${owner_lc}/windrose-dedicated-server-docker"
           short_sha="${GITHUB_SHA::7}"
           echo "tags=${image}:${{ matrix.channel_tag }},${image}:${{ matrix.channel_tag }}-${short_sha}" >> "$GITHUB_OUTPUT"
 
