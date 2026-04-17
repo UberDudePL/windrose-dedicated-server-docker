@@ -254,6 +254,37 @@ start_server() {
   fi
 }
 
+rebuild_wine_prefix() {
+  log "Rebuilding Wine prefix at $WINEPREFIX"
+  rm -rf "$WINEPREFIX"
+  mkdir -p "$WINEPREFIX"
+  chown -R steam:steam "$STEAM_HOME" 2>/dev/null || true
+  init_wine
+}
+
+start_server_with_kernel_retry() {
+  local exe="$1"
+  local launch_attempt
+
+  for launch_attempt in 1 2; do
+    if start_server "$exe"; then
+      return 0
+    fi
+
+    local exit_code=$?
+    # Exit code 53 with kernel32.dll c0000135 usually means a broken/mismatched Wine prefix.
+    if [[ "$launch_attempt" -eq 1 && "$exit_code" -eq 53 ]] && grep -q 'kernel32.dll, status c0000135' "$STEAM_HOME/Steam/logs/stderr.txt" 2>/dev/null; then
+      log "Detected kernel32.dll startup failure, forcing Wine prefix rebuild and retry"
+      rebuild_wine_prefix
+      continue
+    fi
+
+    return "$exit_code"
+  done
+
+  return 1
+}
+
 ensure_user_mapping
 check_free_space "$SERVERDIR" 512
 check_free_space "$STEAM_HOME" 512
@@ -270,4 +301,4 @@ fi
 
 first_run_generate_config "$SERVER_EXE"
 patch_server_config
-start_server "$SERVER_EXE"
+start_server_with_kernel_retry "$SERVER_EXE"
