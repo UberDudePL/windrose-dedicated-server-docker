@@ -325,9 +325,57 @@ At the moment this is log-based and best-effort. Disconnect events are easier to
 
 ## Save transfer and world selection
 
-- World saves live under `data/R5/Saved/SaveProfiles/Default/RocksDB/<game-version>/Worlds/`
-- To move an existing world onto the dedicated server, copy the whole world folder and set `WorldIslandId` in `ServerDescription.json` to that folder name
-- Do not rename world folders — the database relies on those IDs
+World saves live under:
+
+```
+data/R5/Saved/SaveProfiles/Default/RocksDB/<game-version>/Worlds/
+```
+
+Each world is a folder named with its world ID (for example `EC10598E83A14ED04D9C44CBFBF3F4B1`). The server loads the world whose ID matches `WorldIslandId` in `ServerDescription.json`.
+
+### Transfer a save from singleplayer or another server
+
+⚠ Always back up your saves first. Also shut down both the dedicated server and the game client before copying files.
+
+1. **Stop the dedicated server**:
+   ```bash
+   ./windrose stop
+   ```
+
+2. **Locate the source world folder** on the machine that currently has the save:
+   - Steam: `C:\Users\{UserName}\AppData\Local\R5\Saved\SaveProfiles\{YourProfile}\RocksDB\{GameVersion}\Worlds\{WorldID}`
+   - EGS: `C:\Users\{UserName}\AppData\Local\R5\Saved\SaveProfiles\{YourProfile}\RocksDB\{GameVersion}\Worlds\{WorldID}`
+   - Stove: `C:\Users\{UserName}\AppData\Local\R5\Saved\SaveProfiles\StoveDefault\RocksDB\{GameVersion}\Worlds\{WorldID}`
+   - Example: `C:\Users\YarrHarrPirate\AppData\Local\R5\Saved\SaveProfiles\76561199699067790\RocksDB\0.8.0\Worlds\EC10598E83A14ED04D9C44CBFBF3F4B1`
+
+3. **Copy the entire world folder** to the dedicated server data directory, preserving the folder name exactly:
+   ```
+   data/R5/Saved/SaveProfiles/Default/RocksDB/<game-version>/Worlds/
+   ```
+   Example using `scp` from a local machine (copy folder as-is):
+   ```bash
+   scp -r "./EC10598E83A14ED04D9C44CBFBF3F4B1" user@yourserver:/windrose/data/R5/Saved/SaveProfiles/Default/RocksDB/<version>/Worlds/
+   ```
+
+4. **Set the world ID** in `data/R5/ServerDescription.json`:
+   ```json
+   "WorldIslandId": "EC10598E83A14ED04D9C44CBFBF3F4B1"
+   ```
+   Use the copied folder name exactly. Do not rename world folders.
+
+5. **Start the server:**
+   ```bash
+   ./windrose start
+   ```
+
+6. **Verify** — check logs to confirm the correct world loaded:
+   ```bash
+   ./windrose logs
+   ```
+
+7. **Server to client transfer**: reverse the same steps in the opposite direction. If the game asks, choose **local** saves.
+
+> **Note:** The `<game-version>` path segment is version-specific (for example `0.8.0`). Use the exact version directory that contains your world.
 
 ---
 
@@ -455,6 +503,10 @@ docker compose up -d
 ---
 
 ## FAQ
+
+### How do I transfer a savegame to the server?
+
+See the [Save transfer and world selection](#save-transfer-and-world-selection) section. In short: back up first, stop both server and client, copy the full world folder into `data/R5/Saved/SaveProfiles/Default/RocksDB/<version>/Worlds/`, set `WorldIslandId` to the exact folder name, then start the server.
 
 ### How do players join the server?
 
