@@ -225,6 +225,53 @@ MULTIHOME=0.0.0.0
 | `./data`  | `/data`       | Server files, saves, config |
 | `./steam-home` | `/home/steam` | Wine prefix, SteamCMD cache |
 
+## Multiple worlds
+
+Windrose stores each world under the save database path:
+
+```text
+data/R5/Saved/SaveProfiles/Default/RocksDB/<GameVersion>/Worlds/<WorldIslandId>
+```
+
+The active world is selected by `ServerDescription.json`:
+
+```json
+ServerDescription_Persistent.WorldIslandId
+```
+
+Use the helper command to switch interactively:
+
+```bash
+./windrose switch
+```
+
+To only list available worlds without changing anything:
+
+```bash
+./windrose worlds
+```
+
+To detect orphan or broken world directories:
+
+```bash
+./windrose worlds-check
+```
+
+What it does:
+
+- Lists all worlds found under the current RocksDB save version.
+- Marks the currently selected world.
+- Lets you switch to an existing world or create a new one.
+- When creating a new world, it can store a display name and sync it into `WorldDescription.json` after the game creates the metadata file.
+- Stops the server first if it is running, updates `WorldIslandId`, then starts it again.
+- Hides stale placeholder entries (for example directories with only `.windrose-world-name`) unless that placeholder is currently selected.
+
+Important:
+
+- Do not rename world folders. The save database relies on those IDs.
+- If you create a new world, the server initializes its data on the next start.
+- World discovery is version-specific, so the command uses the latest directory found under `RocksDB/`.
+
 ---
 
 ## How players join
@@ -251,6 +298,15 @@ docker compose stop
 # View live logs
 docker compose logs -f windrose
 
+# List worlds
+./windrose worlds
+
+# Detect orphan/broken world entries
+./windrose worlds-check
+
+# Switch to another world interactively
+./windrose switch
+
 # Pull the selected image tag and recreate the container
 docker compose pull && docker compose up -d
 
@@ -273,6 +329,8 @@ chmod +x ./windrose ./serverctl.sh
 ./windrose restart
 ./windrose status
 ./windrose logs
+./windrose worlds
+./windrose worlds-check
 ./windrose update
 ./windrose notify
 ./windrose test-notify
@@ -288,6 +346,25 @@ windrosectl start
 ```
 
 If you want the plain command name instead, install it as `/usr/local/bin/windrose`.
+
+---
+
+## Quick diagnostics
+
+Use these commands for a fast operational check:
+
+```bash
+# 1) Basic container and health status
+./windrose status
+
+# 2) World integrity check (orphan/broken entries)
+./windrose worlds-check
+
+# 3) Recent critical network/auth errors from current log file
+tail -400 ./chat | grep -Ei "account verification failed|turn session was expired|p2pgate disconnected|server authorization failed|login finished with error"
+```
+
+If command `3` returns lines repeatedly, check outbound connectivity and firewall/NAT behavior for `*.windrose.support` on UDP/TCP `3478`.
 
 ---
 
@@ -313,10 +390,18 @@ If `NOTIFY_PROVIDER=auto`, the script prefers Gotify when it is configured, othe
 ./windrose test-notify
 ```
 
-3. Start the watcher in a separate shell:
+3. Start the watcher:
 
 ```bash
 ./windrose notify
+```
+
+The helper asks whether to run in background mode. If you start it in background mode, running `./windrose notify` again detects the running watcher and offers to stop it.
+
+Background logs are written to:
+
+```text
+./backups/notify.log
 ```
 
 At the moment this is log-based and best-effort. Disconnect events are easier to detect reliably than joins, so treat it as a lightweight helper rather than a perfect audit system.
@@ -471,6 +556,7 @@ windrose/
 | `ERROR! Failed to install app` | Check SteamCMD logs and verify the app id and Steam login mode |
 | Server not visible to players | Share the `InviteCode` from `ServerDescription.json` |
 | Connection works on some networks but not others | The network or ISP may be blocking STUN/TURN traffic used by the game; check access to `*.windrose.support` on port `3478` over UDP/TCP |
+| `Account verification failed`, `Turn session was expired`, `BL P2PGate disconnected` | Usually upstream TURN/P2P session/network issue; verify stable outbound access to `*.windrose.support` on UDP/TCP `3478`, avoid aggressive NAT/firewall timeouts, then retry reconnect |
 | Config reset after restart | Edit JSON only when container is stopped |
 | Players have issues after a game patch | Keep the dedicated server version updated to match the game version |
 

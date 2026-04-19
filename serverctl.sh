@@ -20,6 +20,9 @@ SERVICE_NAME="${SERVICE_NAME:-windrose}"
 MODE="${WINDROSE_MODE:-auto}"
 DOCKER_BIN="${DOCKER_BIN:-}"
 SELF_NAME="${WINDROSE_CMD_NAME:-$(basename "$0")}"
+SERVER_DESC_FILE="$SCRIPT_DIR/data/R5/ServerDescription.json"
+ROCKSDB_DIR="$SCRIPT_DIR/data/R5/Saved/SaveProfiles/Default/RocksDB"
+WORLD_NAME_PENDING_FILE=".windrose-world-name"
 DOCKER_CMD=()
 
 # ANSI color codes
@@ -47,6 +50,23 @@ log_error() {
 
 log_step() {
     echo -ne "${_COLOR_CYAN}[windrose]${_COLOR_RESET} $1..."
+}
+
+log_step_done() {
+    echo -e " ${_COLOR_GREEN}DONE${_COLOR_RESET}"
+}
+
+log_step_failed() {
+    echo -e " ${_COLOR_RED}FAILED${_COLOR_RESET}"
+}
+
+log_step_pending() {
+    echo -e " ${_COLOR_YELLOW}PENDING${_COLOR_RESET}"
+}
+
+is_utf8_locale() {
+    local active_locale="${LC_ALL:-${LC_CTYPE:-${LANG:-}}}"
+    [[ "${active_locale,,}" == *"utf-8"* || "${active_locale,,}" == *"utf8"* ]]
 }
 
 init_docker_cmd() {
@@ -124,6 +144,9 @@ Usage:
   $SELF_NAME restart
   $SELF_NAME status
   $SELF_NAME logs
+  $SELF_NAME worlds
+    $SELF_NAME worlds-check
+  $SELF_NAME switch
   $SELF_NAME notify
   $SELF_NAME test-notify [message]
   $SELF_NAME backup
@@ -143,43 +166,624 @@ EOF
 }
 
 start_server() {
-    echo "[windrose] Starting server ($ACTIVE_MODE mode)..."
-    dc up -d
-    dc ps
+    log_step "Starting server ($ACTIVE_MODE mode)"
+    if ! dc up -d >/dev/null 2>&1; then
+        log_step_failed
+        log_error "Failed to start server."
+        exit 1
+    fi
+    log_step_done
 }
 
 stop_server() {
-    echo "[windrose] Stopping server..."
-    dc stop "$SERVICE_NAME"
+    log_step "Stopping server"
+    if ! dc stop "$SERVICE_NAME" >/dev/null 2>&1; then
+        log_step_failed
+        log_error "Failed to stop server."
+        exit 1
+    fi
+    log_step_done
+}
+
+server_is_running() {
+    dc ps --status running --services 2>/dev/null | grep -Fx "$SERVICE_NAME" >/dev/null 2>&1
+}
+
+require_jq() {
+    if ! command -v jq >/dev/null 2>&1; then
+        log_error "jq is required for world switching. Install jq on the host and try again."
+        exit 1
+    fi
+}
+
+detect_world_version() {
+    if [[ ! -d "$ROCKSDB_DIR" ]]; then
+        return 1
+    fi
+
+    find "$ROCKSDB_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | sort -V | tail -n 1
+}
+
+generate_world_id() {
+    od -An -N16 -tx1 /dev/urandom | tr -d ' \n' | tr '[:lower:]' '[:upper:]'
+}
+
+worlds_dir_for_version() {
+    local version="$1"
+    printf '%s' "$ROCKSDB_DIR/$version/Worlds"
+}
+
+world_description_file() {
+    local version="$1"
+    local world_id="$2"
+    printf '%s' "$(worlds_dir_for_version "$version")/$world_id/WorldDescription.json"
+}
+
+world_pending_name_file() {
+    local version="$1"
+    local world_id="$2"
+    printf '%s' "$(worlds_dir_for_version "$version")/$world_id/$WORLD_NAME_PENDING_FILE"
+}
+
+read_pending_world_name() {
+    local version="$1"
+    local world_id="$2"
+    local pending_file
+
+    pending_file="$(world_pending_name_file "$version" "$world_id")"
+    if [[ -f "$pending_file" ]]; then
+        head -n 1 "$pending_file"
+    fi
+}
+
+write_pending_world_name() {
+    local version="$1"
+    local world_id="$2"
+    local world_name="$3"
+    local pending_file
+
+    pending_file="$(world_pending_name_file "$version" "$world_id")"
+    printf '%s\n' "$world_name" > "$pending_file"
+}
+
+sync_world_name_metadata() {
+    local version="$1"
+    local world_id="$2"
+    local world_name="$3"
+    local world_desc_file tmp_file pending_file
+
+    [[ -z "$world_name" ]] && return 1
+
+    world_desc_file="$(world_description_file "$version" "$world_id")"
+    pending_file="$(world_pending_name_file "$version" "$world_id")"
+    if [[ ! -f "$world_desc_file" ]]; then
+        return 1
+    fi
+
+    tmp_file="$world_desc_file.tmp"
+    jq --arg world_name "$world_name" '.WorldDescription.WorldName = $world_name' "$world_desc_file" > "$tmp_file"
+    mv "$tmp_file" "$world_desc_file"
+    rm -f "$pending_file"
+    return 0
+}
+
+apply_pending_world_name() {
+    local version="$1"
+    local world_id="$2"
+    local pending_name
+
+    pending_name="$(read_pending_world_name "$version" "$world_id")"
+    if [[ -n "$pending_name" ]]; then
+        sync_world_name_metadata "$version" "$world_id" "$pending_name" >/dev/null 2>&1 || true
+    fi
+}
+
+wait_and_sync_world_name() {
+    local version="$1"
+    local world_id="$2"
+    local world_name="$3"
+
+    [[ -z "$world_name" ]] && return 0
+
+    log_step "Waiting for world metadata so the new name can be saved"
+    for _ in $(seq 1 60); do
+        if sync_world_name_metadata "$version" "$world_id" "$world_name" >/dev/null 2>&1; then
+            log_step_done
+            log_ok "Saved world name to metadata: $world_name"
+            return 0
+        fi
+        if ! server_is_running; then
+            break
+        fi
+        sleep 1
+    done
+
+    log_step_pending
+    log_warn "World metadata is not available yet. The requested name will be applied automatically later."
+    return 0
+}
+
+load_world_ids() {
+    local worlds_dir="$1"
+
+    find "$worlds_dir" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | sort
+}
+
+world_display_name() {
+    local version="$1"
+    local world_id="$2"
+    local current_world_id="$3"
+    local current_server_name="$4"
+    local world_desc_file world_name pending_name
+
+    apply_pending_world_name "$version" "$world_id"
+
+    world_desc_file="$(world_description_file "$version" "$world_id")"
+    if [[ -f "$world_desc_file" ]]; then
+        world_name="$(jq -r '.WorldDescription.WorldName // empty' "$world_desc_file" 2>/dev/null || true)"
+        if [[ -n "$world_name" && "$world_name" != "null" ]]; then
+            printf '%s' "$world_name"
+            return 0
+        fi
+    fi
+
+    pending_name="$(read_pending_world_name "$version" "$world_id")"
+    if [[ -n "$pending_name" ]]; then
+        printf '%s' "$pending_name"
+        return 0
+    fi
+
+    if [[ "$world_id" == "$current_world_id" && -n "$current_server_name" ]]; then
+        printf '%s' "$current_server_name"
+        return 0
+    fi
+
+    printf '%s' "$world_id"
+}
+
+world_is_initialized() {
+    local version="$1"
+    local world_id="$2"
+    local world_desc_file
+
+    world_desc_file="$(world_description_file "$version" "$world_id")"
+    [[ -f "$world_desc_file" ]]
+}
+
+world_is_pending_init() {
+    local version="$1"
+    local world_id="$2"
+    local pending_file
+
+    pending_file="$(world_pending_name_file "$version" "$world_id")"
+    [[ -f "$pending_file" ]]
+}
+
+world_is_ghost_placeholder() {
+    local version="$1"
+    local world_id="$2"
+    local world_dir extra_entry
+
+    if world_is_initialized "$version" "$world_id"; then
+        return 1
+    fi
+
+    if ! world_is_pending_init "$version" "$world_id"; then
+        return 1
+    fi
+
+    world_dir="$(worlds_dir_for_version "$version")/$world_id"
+    extra_entry="$(find "$world_dir" -mindepth 1 -maxdepth 1 ! -name "$WORLD_NAME_PENDING_FILE" -print -quit 2>/dev/null || true)"
+    [[ -z "$extra_entry" ]]
+}
+
+should_hide_world_from_list() {
+    local version="$1"
+    local world_id="$2"
+    local current_world_id="$3"
+
+    if [[ "$world_id" == "$current_world_id" ]]; then
+        return 1
+    fi
+
+    world_is_ghost_placeholder "$version" "$world_id"
+}
+
+build_visible_world_ids() {
+    local version="$1"
+    local worlds_dir="$2"
+    local current_world_id="$3"
+    local world_id
+
+    while IFS= read -r world_id; do
+        if should_hide_world_from_list "$version" "$world_id" "$current_world_id"; then
+            continue
+        fi
+        printf '%s\n' "$world_id"
+    done < <(load_world_ids "$worlds_dir")
+}
+
+print_world_header() {
+    local version="$1"
+    local worlds_dir="$2"
+
+    log_info "Worlds"
+    echo -e "${_COLOR_CYAN}  Save version:${_COLOR_RESET} $version"
+    echo -e "${_COLOR_CYAN}  Worlds path:${_COLOR_RESET} $worlds_dir"
+    echo
+}
+
+print_world_entry() {
+    local index="$1"
+    local display_name="$2"
+    local is_current="$3"
+    local is_pending="$4"
+
+    printf '  %b%d)%b %s' "${_COLOR_CYAN}" "$index" "${_COLOR_RESET}" "$display_name"
+
+    if [[ "$is_current" == "true" ]]; then
+        printf ' %b[current]%b' "${_COLOR_GREEN}" "${_COLOR_RESET}"
+    fi
+
+    if [[ "$is_pending" == "true" ]]; then
+        printf ' %b[pending init]%b' "${_COLOR_YELLOW}" "${_COLOR_RESET}"
+    fi
+
+    printf '\n'
+}
+
+print_worlds() {
+    local version="$1"
+    local current_world_id="$2"
+    local current_server_name="$3"
+    local worlds_dir display_name
+    local is_current is_pending
+    local -a world_ids=()
+
+    worlds_dir="$(worlds_dir_for_version "$version")"
+    while IFS= read -r world_id; do
+        world_ids+=("$world_id")
+    done < <(build_visible_world_ids "$version" "$worlds_dir" "$current_world_id")
+
+    print_world_header "$version" "$worlds_dir"
+
+    if ((${#world_ids[@]} == 0)); then
+        log_warn "No existing worlds were found for version $version."
+        return 0
+    fi
+
+    for i in "${!world_ids[@]}"; do
+        display_name="$(world_display_name "$version" "${world_ids[$i]}" "$current_world_id" "$current_server_name")"
+        if [[ "${world_ids[$i]}" == "$current_world_id" ]]; then
+            is_current="true"
+        else
+            is_current="false"
+        fi
+
+        if ! world_is_initialized "$version" "${world_ids[$i]}" && world_is_pending_init "$version" "${world_ids[$i]}"; then
+            is_pending="true"
+        else
+            is_pending="false"
+        fi
+
+        print_world_entry "$((i + 1))" "$display_name" "$is_current" "$is_pending"
+    done
+}
+
+list_worlds() {
+    local version current_world_id current_server_name
+
+    require_jq
+
+    if [[ ! -f "$SERVER_DESC_FILE" ]]; then
+        log_error "ServerDescription.json not found at $SERVER_DESC_FILE"
+        log_info "Start the server once so the game can generate its config, then try again."
+        exit 1
+    fi
+
+    version="$(detect_world_version || true)"
+    if [[ -z "$version" ]]; then
+        log_error "No RocksDB version directory found under $ROCKSDB_DIR"
+        log_info "Start the server once so the save path is initialized, then try again."
+        exit 1
+    fi
+
+    current_world_id="$(jq -r '.ServerDescription_Persistent.WorldIslandId // empty' "$SERVER_DESC_FILE")"
+    current_server_name="$(jq -r '.ServerDescription_Persistent.ServerName // empty' "$SERVER_DESC_FILE")"
+    print_worlds "$version" "$current_world_id" "$current_server_name"
+}
+
+check_worlds() {
+    local version worlds_dir world_id pending_file extra_entry
+    local issue_count=0
+
+    version="$(detect_world_version || true)"
+    if [[ -z "$version" ]]; then
+        log_error "No RocksDB version directory found under $ROCKSDB_DIR"
+        log_info "Start the server once so the save path is initialized, then try again."
+        exit 1
+    fi
+
+    worlds_dir="$(worlds_dir_for_version "$version")"
+    if [[ ! -d "$worlds_dir" ]]; then
+        log_warn "Worlds directory does not exist yet: $worlds_dir"
+        return 0
+    fi
+
+    log_info "Checking worlds for orphan or broken entries"
+    echo -e "${_COLOR_CYAN}  Save version:${_COLOR_RESET} $version"
+    echo -e "${_COLOR_CYAN}  Worlds path:${_COLOR_RESET} $worlds_dir"
+
+    while IFS= read -r world_id; do
+        if world_is_initialized "$version" "$world_id"; then
+            continue
+        fi
+
+        issue_count=$((issue_count + 1))
+        pending_file="$(world_pending_name_file "$version" "$world_id")"
+        extra_entry="$(find "$worlds_dir/$world_id" -mindepth 1 -maxdepth 1 ! -name "$WORLD_NAME_PENDING_FILE" -print -quit 2>/dev/null || true)"
+
+        if [[ -f "$pending_file" && -z "$extra_entry" ]]; then
+            echo -e "  ${_COLOR_YELLOW}- $world_id${_COLOR_RESET}: pending placeholder (only $WORLD_NAME_PENDING_FILE)"
+        elif [[ -f "$pending_file" ]]; then
+            echo -e "  ${_COLOR_YELLOW}- $world_id${_COLOR_RESET}: incomplete world (missing WorldDescription.json, has pending name)"
+        else
+            echo -e "  ${_COLOR_RED}- $world_id${_COLOR_RESET}: broken world (missing WorldDescription.json)"
+        fi
+    done < <(load_world_ids "$worlds_dir")
+
+    if [[ "$issue_count" -eq 0 ]]; then
+        log_ok "No orphan or broken worlds detected."
+    else
+        log_warn "Detected $issue_count orphan or broken world entries."
+    fi
+}
+
+switch_world() {
+    local version worlds_dir current_world_id current_server_name was_running=""
+    local selected_id choice tmp_file created_new="false" new_world_name=""
+    local -a world_ids=()
+
+    require_jq
+
+    if [[ ! -f "$SERVER_DESC_FILE" ]]; then
+        log_error "ServerDescription.json not found at $SERVER_DESC_FILE"
+        log_info "Start the server once so the game can generate its config, then try again."
+        exit 1
+    fi
+
+    version="$(detect_world_version || true)"
+    if [[ -z "$version" ]]; then
+        log_error "No RocksDB version directory found under $ROCKSDB_DIR"
+        log_info "Start the server once so the save path is initialized, then try again."
+        exit 1
+    fi
+
+    worlds_dir="$ROCKSDB_DIR/$version/Worlds"
+    mkdir -p "$worlds_dir"
+
+    current_world_id="$(jq -r '.ServerDescription_Persistent.WorldIslandId // empty' "$SERVER_DESC_FILE")"
+    if [[ -z "$current_world_id" || "$current_world_id" == "null" ]]; then
+        log_error "WorldIslandId is missing in $SERVER_DESC_FILE"
+        exit 1
+    fi
+
+    current_server_name="$(jq -r '.ServerDescription_Persistent.ServerName // empty' "$SERVER_DESC_FILE")"
+
+    while IFS= read -r world_id; do
+        world_ids+=("$world_id")
+    done < <(build_visible_world_ids "$version" "$worlds_dir" "$current_world_id")
+
+    print_worlds "$version" "$current_world_id" "$current_server_name"
+
+    echo -e "  ${_COLOR_CYAN}N)${_COLOR_RESET} Create a new world"
+    echo -e "  ${_COLOR_CYAN}Q)${_COLOR_RESET} Cancel"
+    echo
+    read -r -p "Select a world: " choice
+
+    case "$choice" in
+        [Qq])
+            log_info "World switch canceled."
+            return 0
+            ;;
+        [Nn])
+            selected_id="$(generate_world_id)"
+            mkdir -p "$worlds_dir/$selected_id"
+            created_new="true"
+            if ! is_utf8_locale; then
+                log_warn "Current shell locale is not UTF-8. Non-ASCII world names may display incorrectly."
+                log_warn "Consider: export LANG=C.UTF-8"
+            fi
+            read -r -p "New world name (optional): " new_world_name
+            if [[ -n "$new_world_name" ]]; then
+                write_pending_world_name "$version" "$selected_id" "$new_world_name"
+            fi
+            ;;
+        *)
+            if [[ ! "$choice" =~ ^[0-9]+$ ]] || (( choice < 1 || choice > ${#world_ids[@]} )); then
+                log_error "Invalid selection."
+                exit 1
+            fi
+            selected_id="${world_ids[$((choice - 1))]}"
+            ;;
+    esac
+
+    if server_is_running; then
+        was_running="yes"
+        log_step "Stopping server before world switch"
+        if ! dc stop "$SERVICE_NAME" >/dev/null 2>&1; then
+            log_step_failed
+            log_error "Failed to stop container before changing WorldIslandId."
+            exit 1
+        fi
+        log_step_done
+    fi
+
+    tmp_file="$SERVER_DESC_FILE.tmp"
+    jq --arg world_id "$selected_id" '.ServerDescription_Persistent.WorldIslandId = $world_id' "$SERVER_DESC_FILE" > "$tmp_file"
+    mv "$tmp_file" "$SERVER_DESC_FILE"
+
+    if [[ "$created_new" == "true" ]]; then
+        if [[ -n "$new_world_name" ]]; then
+            log_ok "Created and selected new world: $new_world_name"
+        else
+            log_ok "Created and selected new world: $selected_id"
+        fi
+        log_info "The server will initialize the new world data on next start."
+    elif [[ "$selected_id" == "$current_world_id" ]]; then
+        log_ok "World remains unchanged: $(world_display_name "$version" "$selected_id" "$current_world_id" "$current_server_name")"
+    else
+        log_ok "Selected world: $(world_display_name "$version" "$selected_id" "$current_world_id" "$current_server_name")"
+    fi
+
+    if [[ -n "$was_running" ]]; then
+        log_step "Starting server again"
+        if ! dc up -d >/dev/null 2>&1; then
+            log_step_failed
+            log_error "World was switched, but the container failed to start again."
+            exit 1
+        fi
+        log_step_done
+        if [[ "$created_new" == "true" && -n "$new_world_name" ]]; then
+            wait_and_sync_world_name "$version" "$selected_id" "$new_world_name"
+        fi
+    else
+        log_info "Server was not running. Start it manually when you want to load the selected world."
+    fi
 }
 
 restart_server() {
-    echo "[windrose] Restarting server..."
+    log_step "Restarting server"
     if ! dc restart "$SERVICE_NAME"; then
         dc stop "$SERVICE_NAME" || true
-        dc up -d
+        if ! dc up -d >/dev/null 2>&1; then
+            log_step_failed
+            log_error "Failed to restart server."
+            exit 1
+        fi
     fi
+    log_step_done
     dc ps
 }
 
 status_server() {
-    echo "[windrose] Service status ($ACTIVE_MODE mode):"
+    log_info "Service status ($ACTIVE_MODE mode):"
     dc ps
 }
 
 follow_logs() {
-    echo "[windrose] Following logs..."
-    dc logs -f "$SERVICE_NAME"
+    log_info "Following logs"
+    dc logs --timestamps -f "$SERVICE_NAME" | sed 's/\.[0-9]*Z/Z/' | sed \
+        -e $'s/\(.*Error.*\)/\x1b[0;31m\\1\x1b[0m/' \
+        -e $'s/\(.*Warning.*\)/\x1b[1;33m\\1\x1b[0m/'
 }
 
 run_notifier() {
-    echo "[windrose] Starting activity notifier..."
-    exec "$SCRIPT_DIR/notify.sh"
+    local choice
+    local notify_pid_file="$SCRIPT_DIR/backups/notify.pid"
+    local notify_log_file="$SCRIPT_DIR/backups/notify.log"
+    local notify_pid=""
+
+    if [[ -f "$notify_pid_file" ]]; then
+        notify_pid="$(head -n 1 "$notify_pid_file" 2>/dev/null || true)"
+        if [[ -n "$notify_pid" ]] && ! kill -0 "$notify_pid" >/dev/null 2>&1; then
+            rm -f "$notify_pid_file"
+            notify_pid=""
+        fi
+    fi
+
+    # Fallback detection for old runs started before PID tracking was added.
+    if [[ -z "$notify_pid" ]]; then
+        notify_pid="$(pgrep -f "$SCRIPT_DIR/notify.sh" | head -n 1 || true)"
+        if [[ -n "$notify_pid" ]]; then
+            mkdir -p "$(dirname "$notify_pid_file")"
+            printf '%s\n' "$notify_pid" > "$notify_pid_file"
+        fi
+    fi
+
+    if [[ ! -t 0 ]]; then
+        if [[ -n "$notify_pid" ]]; then
+            log_info "Activity notifier is already running in background (PID $notify_pid)."
+            return 0
+        fi
+        log_info "Starting activity notifier in foreground (non-interactive shell)"
+        exec "$SCRIPT_DIR/notify.sh"
+    fi
+
+    if [[ -n "$notify_pid" ]]; then
+        echo "[windrose] Activity notifier is already running in background (PID $notify_pid)."
+        echo "[windrose] Stop it now? [y/N]"
+        read -r choice
+
+        case "${choice,,}" in
+            y|yes)
+                log_step "Stopping activity notifier"
+                if ! kill "$notify_pid" >/dev/null 2>&1; then
+                    log_step_failed
+                    log_error "Failed to stop notifier process (PID $notify_pid)."
+                    exit 1
+                fi
+
+                for _ in $(seq 1 20); do
+                    if ! kill -0 "$notify_pid" >/dev/null 2>&1; then
+                        break
+                    fi
+                done
+
+                if kill -0 "$notify_pid" >/dev/null 2>&1; then
+                    if ! kill -9 "$notify_pid" >/dev/null 2>&1; then
+                        log_step_failed
+                        log_error "Notifier did not stop cleanly and could not be force-stopped."
+                        exit 1
+                    fi
+                fi
+
+                rm -f "$notify_pid_file"
+                log_step_done
+                log_ok "Notifier stopped."
+                return 0
+                ;;
+            *)
+                log_info "Notifier left running in background."
+                return 0
+                ;;
+        esac
+    fi
+
+    echo "[windrose] Run activity notifier in background? [y/N]"
+    read -r choice
+
+    case "${choice,,}" in
+        y|yes)
+            mkdir -p "$(dirname "$notify_log_file")"
+            log_step "Starting activity notifier in background"
+            if nohup "$SCRIPT_DIR/notify.sh" >>"$notify_log_file" 2>&1 & then
+                notify_pid="$!"
+                printf '%s\n' "$notify_pid" > "$notify_pid_file"
+                log_step_done
+                log_ok "Notifier is running in background (PID $notify_pid)."
+                log_info "Log file: $notify_log_file"
+            else
+                log_step_failed
+                log_error "Failed to start notifier in background."
+                exit 1
+            fi
+            ;;
+        *)
+            log_info "Starting activity notifier in foreground"
+            exec "$SCRIPT_DIR/notify.sh"
+            ;;
+    esac
 }
 
 test_notifier() {
-    echo "[windrose] Sending test notification..."
-    "$SCRIPT_DIR/notify.sh" test "${*:-⚓ Test notification from Windrose server}"
+    log_step "Sending test notification"
+    if ! "$SCRIPT_DIR/notify.sh" test "${*:-⚓ Test notification from Windrose server}"; then
+        log_step_failed
+        log_error "Failed to send test notification."
+        exit 1
+    fi
+    log_step_done
 }
 
 backup_server() {
@@ -211,11 +815,11 @@ backup_server() {
         was_running="yes"
         log_step "Stopping server for a consistent $scope_label"
         if ! dc stop "$SERVICE_NAME" >/dev/null 2>&1; then
-            echo -e " ${_COLOR_RED}FAILED${_COLOR_RESET}"
+            log_step_failed
             log_error "Failed to stop container before backup."
             return 1
         fi
-        echo -e " ${_COLOR_GREEN}DONE${_COLOR_RESET}"
+        log_step_done
     fi
 
     if [[ ! -f "$SCRIPT_DIR/backup.sh" ]]; then
@@ -230,11 +834,11 @@ backup_server() {
     if [[ -n "$was_running" ]]; then
         log_step "Starting server again"
         if ! dc up -d >/dev/null 2>&1; then
-            echo -e " ${_COLOR_RED}FAILED${_COLOR_RESET}"
+            log_step_failed
             log_error "Failed to start container after backup."
             backup_exit=1
         else
-            echo -e " ${_COLOR_GREEN}DONE${_COLOR_RESET}"
+            log_step_done
         fi
     fi
 
@@ -298,7 +902,7 @@ upload_backup_to_discord() {
         "$discord_url")"
 
     if [[ "$http_code" =~ ^2 ]]; then
-        echo -e " ${_COLOR_GREEN}DONE${_COLOR_RESET}"
+        log_step_done
     else
         echo -e " ${_COLOR_RED}FAILED (HTTP $http_code)${_COLOR_RESET}"
     fi
@@ -313,6 +917,7 @@ install_backup_cron() {
     local cron_cmd
     local existing_cron filtered_cron
     local had_legacy_entry=""
+    local result_message
 
     if [[ ! -x "$SCRIPT_DIR/windrose" ]]; then
         backup_cmd="$SCRIPT_DIR/serverctl.sh backup"
@@ -324,7 +929,7 @@ install_backup_cron() {
     local cron_line="$schedule /bin/bash -lc '$cron_cmd' >> $backup_log_file 2>&1 $cron_tag"
 
     if ! command -v crontab >/dev/null 2>&1; then
-        echo "[windrose] Error: crontab is not available on this host."
+        log_error "crontab is not available on this host."
         exit 1
     fi
 
@@ -336,36 +941,57 @@ install_backup_cron() {
 
     filtered_cron="$(printf '%s\n' "$existing_cron" | grep -Ev "($SCRIPT_DIR/backup\.sh|$SCRIPT_DIR/windrose backup|$SCRIPT_DIR/serverctl\.sh backup|backup job started|windrose-backup-job)" || true)"
 
-    {
+    log_step "Installing backup cron"
+    if ! {
         if [[ -n "$filtered_cron" ]]; then
             printf '%s\n' "$filtered_cron"
         fi
         echo "$cron_line"
-    } | crontab -
+    } | crontab -; then
+        log_step_failed
+        log_error "Failed to install backup cron."
+        exit 1
+    fi
+    log_step_done
 
     if [[ -n "$had_legacy_entry" ]]; then
-        echo "[windrose] Updated legacy backup cron to use windrose backup:"
+        result_message="Updated legacy backup cron to use windrose backup:"
     else
-        echo "[windrose] Installed backup cron:"
+        result_message="Installed backup cron:"
     fi
+    log_ok "$result_message"
     echo "$cron_line"
 }
 
 pull_image() {
-    echo "[windrose] Pulling image defined in compose..."
-    dc pull
+    log_step "Pulling image defined in compose"
+    if ! dc pull; then
+        log_step_failed
+        log_error "Failed to pull image defined in compose."
+        exit 1
+    fi
+    log_step_done
 }
 
 update_server() {
-    echo "[windrose] Pulling the selected image tag and recreating the container..."
-    dc pull
-    dc up -d
+    log_step "Pulling the selected image tag and recreating the container"
+    if ! dc pull >/dev/null 2>&1 || ! dc up -d >/dev/null 2>&1; then
+        log_step_failed
+        log_error "Failed to update and recreate the container."
+        exit 1
+    fi
+    log_step_done
     dc ps
 }
 
 down_server() {
-    echo "[windrose] Stopping and removing the stack..."
-    dc down
+    log_step "Stopping and removing the stack"
+    if ! dc down; then
+        log_step_failed
+        log_error "Failed to stop and remove the stack."
+        exit 1
+    fi
+    log_step_done
 }
 
 install_self() {
@@ -373,14 +999,27 @@ install_self() {
     local target_dir
     target_dir="$(dirname "$target")"
 
+    log_step "Installing launcher at $target"
     mkdir -p "$target_dir"
-    cat > "$target" <<EOF
+    if ! cat > "$target" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
 exec "$SCRIPT_DIR/windrose" "\$@"
 EOF
-    chmod +x "$target"
-    echo "[windrose] Installed launcher at $target"
+    then
+        log_step_failed
+        log_error "Failed to write launcher to $target"
+        exit 1
+    fi
+
+    if ! chmod +x "$target"; then
+        log_step_failed
+        log_error "Failed to make launcher executable at $target"
+        exit 1
+    fi
+
+    log_step_done
+    log_ok "Installed launcher at $target"
 }
 
 init_docker_cmd
@@ -401,6 +1040,15 @@ case "${1:-help}" in
         ;;
     logs)
         follow_logs
+        ;;
+    worlds)
+        list_worlds
+        ;;
+    worlds-check)
+        check_worlds
+        ;;
+    switch)
+        switch_world
         ;;
     notify)
         run_notifier
