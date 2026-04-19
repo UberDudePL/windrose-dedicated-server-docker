@@ -23,6 +23,8 @@ SELF_NAME="${WINDROSE_CMD_NAME:-$(basename "$0")}"
 SERVER_DESC_FILE="$SCRIPT_DIR/data/R5/ServerDescription.json"
 ROCKSDB_DIR="$SCRIPT_DIR/data/R5/Saved/SaveProfiles/Default/RocksDB"
 WORLD_NAME_PENDING_FILE=".windrose-world-name"
+UPDATE_LOG_DIR="$SCRIPT_DIR/backups"
+UPDATE_LOG_FILE="$UPDATE_LOG_DIR/update.log"
 DOCKER_CMD=()
 
 # ANSI color codes
@@ -62,6 +64,35 @@ log_step_failed() {
 
 log_step_pending() {
     echo -e " ${_COLOR_YELLOW}PENDING${_COLOR_RESET}"
+}
+
+render_progress_bar() {
+    local percent="$1"
+    local width=30
+    local filled empty
+    local filled_bar empty_bar
+
+    filled=$(( percent * width / 100 ))
+    empty=$(( width - filled ))
+
+    filled_bar="$(printf '%*s' "$filled" '' | tr ' ' '#')"
+    empty_bar="$(printf '%*s' "$empty" '' | tr ' ' '-')"
+
+    printf '\r[windrose] Update progress [%s%s] %3d%%' "$filled_bar" "$empty_bar" "$percent"
+    if [[ "$percent" -ge 100 ]]; then
+        printf '\n'
+    fi
+}
+
+rotate_update_logs() {
+    rm -f "$UPDATE_LOG_FILE.3"
+    [[ -f "$UPDATE_LOG_FILE.2" ]] && mv "$UPDATE_LOG_FILE.2" "$UPDATE_LOG_FILE.3"
+    [[ -f "$UPDATE_LOG_FILE.1" ]] && mv "$UPDATE_LOG_FILE.1" "$UPDATE_LOG_FILE.2"
+    [[ -f "$UPDATE_LOG_FILE" ]] && mv "$UPDATE_LOG_FILE" "$UPDATE_LOG_FILE.1"
+}
+
+append_update_log() {
+    printf '[%s] %s\n' "$(date -Ins)" "$*" >> "$UPDATE_LOG_FILE"
 }
 
 is_utf8_locale() {
@@ -145,7 +176,7 @@ Usage:
   $SELF_NAME status
   $SELF_NAME logs
   $SELF_NAME worlds
-    $SELF_NAME worlds-check
+  $SELF_NAME worlds-check
   $SELF_NAME switch
   $SELF_NAME notify
   $SELF_NAME test-notify [message]
@@ -974,14 +1005,39 @@ pull_image() {
 }
 
 update_server() {
-    log_step "Pulling the selected image tag and recreating the container"
-    if ! dc pull >/dev/null 2>&1 || ! dc up -d >/dev/null 2>&1; then
-        log_step_failed
-        log_error "Failed to update and recreate the container."
+    mkdir -p "$UPDATE_LOG_DIR"
+    rotate_update_logs
+    append_update_log "Update started (mode=$ACTIVE_MODE, compose_dir=$COMPOSE_DIR, service=$SERVICE_NAME)"
+
+    render_progress_bar 0
+
+    append_update_log "Running: docker compose down"
+    if ! dc down >>"$UPDATE_LOG_FILE" 2>&1; then
+        printf '\n'
+        log_error "Failed to stop and remove the stack before update. See $UPDATE_LOG_FILE"
         exit 1
     fi
-    log_step_done
-    dc ps
+    render_progress_bar 33
+
+    append_update_log "Running: docker compose pull"
+    if ! dc pull >>"$UPDATE_LOG_FILE" 2>&1; then
+        printf '\n'
+        log_error "Failed to pull the selected image tag. See $UPDATE_LOG_FILE"
+        exit 1
+    fi
+    render_progress_bar 66
+
+    append_update_log "Running: docker compose up -d"
+    if ! dc up -d >>"$UPDATE_LOG_FILE" 2>&1; then
+        printf '\n'
+        log_error "Failed to recreate the container after update. See $UPDATE_LOG_FILE"
+        exit 1
+    fi
+
+    render_progress_bar 100
+    log_ok "Server starting. Check status with: ./$SELF_NAME status"
+    log_info "Detailed update log: $UPDATE_LOG_FILE"
+    append_update_log "Update finished successfully"
 }
 
 down_server() {
