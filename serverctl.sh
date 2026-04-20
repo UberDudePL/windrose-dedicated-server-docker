@@ -183,7 +183,8 @@ Usage:
   $SELF_NAME backup
   $SELF_NAME install-backup-cron [schedule]
   $SELF_NAME pull
-  $SELF_NAME update
+  $SELF_NAME update [--force-down]
+  $SELF_NAME update-log [lines]
   $SELF_NAME down
   $SELF_NAME install [target]
 
@@ -1004,34 +1005,77 @@ pull_image() {
     log_step_done
 }
 
+show_update_log() {
+    local lines="${1:-120}"
+
+    if [[ ! "$lines" =~ ^[0-9]+$ ]] || [[ "$lines" -le 0 ]]; then
+        log_error "Invalid line count '$lines'. Use a positive integer."
+        exit 1
+    fi
+
+    if [[ ! -f "$UPDATE_LOG_FILE" ]]; then
+        log_warn "Update log file not found: $UPDATE_LOG_FILE"
+        log_info "Run ./$SELF_NAME update first to generate logs."
+        return 0
+    fi
+
+    log_info "Showing last $lines lines from $UPDATE_LOG_FILE"
+    tail -n "$lines" "$UPDATE_LOG_FILE"
+}
+
 update_server() {
+    local mode="${1:-}"
+
+    if [[ -n "$mode" && "$mode" != "--force-down" ]]; then
+        log_error "Invalid update option '$mode'. Supported: --force-down"
+        exit 1
+    fi
+
     mkdir -p "$UPDATE_LOG_DIR"
     rotate_update_logs
-    append_update_log "Update started (mode=$ACTIVE_MODE, compose_dir=$COMPOSE_DIR, service=$SERVICE_NAME)"
+    append_update_log "Update started (mode=$ACTIVE_MODE, compose_dir=$COMPOSE_DIR, service=$SERVICE_NAME, strategy=${mode:---safe})"
+    log_info "Progress bar shows update stages, not byte-level download progress."
 
     render_progress_bar 0
 
-    append_update_log "Running: docker compose down"
-    if ! dc down >>"$UPDATE_LOG_FILE" 2>&1; then
-        printf '\n'
-        log_error "Failed to stop and remove the stack before update. See $UPDATE_LOG_FILE"
-        exit 1
-    fi
-    render_progress_bar 33
+    if [[ "$mode" == "--force-down" ]]; then
+        append_update_log "Running (force-down): docker compose down"
+        if ! dc down >>"$UPDATE_LOG_FILE" 2>&1; then
+            printf '\n'
+            log_error "Failed to stop and remove the stack before update. See $UPDATE_LOG_FILE"
+            exit 1
+        fi
+        render_progress_bar 33
 
-    append_update_log "Running: docker compose pull"
-    if ! dc pull >>"$UPDATE_LOG_FILE" 2>&1; then
-        printf '\n'
-        log_error "Failed to pull the selected image tag. See $UPDATE_LOG_FILE"
-        exit 1
-    fi
-    render_progress_bar 66
+        append_update_log "Running (force-down): docker compose pull"
+        if ! dc pull >>"$UPDATE_LOG_FILE" 2>&1; then
+            printf '\n'
+            log_error "Failed to pull the selected image tag. See $UPDATE_LOG_FILE"
+            exit 1
+        fi
+        render_progress_bar 66
 
-    append_update_log "Running: docker compose up -d"
-    if ! dc up -d >>"$UPDATE_LOG_FILE" 2>&1; then
-        printf '\n'
-        log_error "Failed to recreate the container after update. See $UPDATE_LOG_FILE"
-        exit 1
+        append_update_log "Running (force-down): docker compose up -d"
+        if ! dc up -d >>"$UPDATE_LOG_FILE" 2>&1; then
+            printf '\n'
+            log_error "Failed to recreate the container after update. See $UPDATE_LOG_FILE"
+            exit 1
+        fi
+    else
+        append_update_log "Running (safe): docker compose pull"
+        if ! dc pull >>"$UPDATE_LOG_FILE" 2>&1; then
+            printf '\n'
+            log_error "Failed to pull the selected image tag. Existing container was left untouched. See $UPDATE_LOG_FILE"
+            exit 1
+        fi
+        render_progress_bar 50
+
+        append_update_log "Running (safe): docker compose up -d"
+        if ! dc up -d >>"$UPDATE_LOG_FILE" 2>&1; then
+            printf '\n'
+            log_error "Failed to recreate the container after update. See $UPDATE_LOG_FILE"
+            exit 1
+        fi
     fi
 
     render_progress_bar 100
@@ -1123,7 +1167,10 @@ case "${1:-help}" in
         pull_image
         ;;
     update)
-        update_server
+        update_server "${2:-}"
+        ;;
+    update-log)
+        show_update_log "${2:-120}"
         ;;
     down)
         down_server

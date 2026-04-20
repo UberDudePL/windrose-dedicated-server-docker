@@ -323,6 +323,9 @@ docker compose logs -f windrose
 # Update helper flow (down -> pull with progress -> up)
 ./windrose update
 
+# Show detailed update log (default: last 120 lines)
+./windrose update-log
+
 # Check server process inside container
 docker compose exec windrose pgrep -a WindroseServer
 
@@ -637,6 +640,8 @@ git pull
 ```
 
 `./windrose update` writes detailed command output to `./backups/update.log` and keeps three rotated history files (`update.log.1`, `update.log.2`, `update.log.3`).
+
+Use `./windrose update-log [lines]` to quickly inspect recent update details from the active log file.
 
 ### What is the difference between stable and latest?
 

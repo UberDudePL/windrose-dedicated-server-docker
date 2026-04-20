@@ -28,6 +28,19 @@ jobs:
             bash -n "$file"
           done
 
+      - name: Install shellcheck
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+
+      - name: Lint shell scripts (shellcheck)
+        run: |
+          set -euo pipefail
+          find . -path './brokol' -prune -o -type f \( -name '*.sh' -o -name 'entrypoint.sh' \) -print0 | while IFS= read -r -d '' file; do
+            shellcheck "$file"
+          done
+
   docker-build:
     runs-on: ubuntu-latest
     strategy:
