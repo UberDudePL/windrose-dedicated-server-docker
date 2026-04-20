@@ -36,7 +36,7 @@ load_env_file() {
     [[ -z "$key" ]] && continue
 
     printf -v "$key" '%s' "$value"
-    export "$key"
+    export "${key?}"
   done < "$ENV_FILE"
 }
 
