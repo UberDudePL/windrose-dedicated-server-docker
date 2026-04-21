@@ -89,6 +89,7 @@ rotate_update_logs() {
     [[ -f "$UPDATE_LOG_FILE.2" ]] && mv "$UPDATE_LOG_FILE.2" "$UPDATE_LOG_FILE.3"
     [[ -f "$UPDATE_LOG_FILE.1" ]] && mv "$UPDATE_LOG_FILE.1" "$UPDATE_LOG_FILE.2"
     [[ -f "$UPDATE_LOG_FILE" ]] && mv "$UPDATE_LOG_FILE" "$UPDATE_LOG_FILE.1"
+    return 0
 }
 
 append_update_log() {
@@ -177,13 +178,11 @@ Usage:
   $SELF_NAME status
   $SELF_NAME status-json
   $SELF_NAME logs
-  $SELF_NAME player-history [lines]
-  $SELF_NAME player-events [lines]
+  $SELF_NAME activity [events|history] [lines]
   $SELF_NAME worlds
   $SELF_NAME worlds-check
   $SELF_NAME switch
-  $SELF_NAME notify
-  $SELF_NAME test-notify [message]
+  $SELF_NAME notify [test [message]|status]
   $SELF_NAME backup
   $SELF_NAME install-backup-cron [schedule]
   $SELF_NAME pull
@@ -198,6 +197,7 @@ Notes:
   - docker permissions are auto-detected; set DOCKER_BIN manually only if needed
   - set WINDROSE_MODE=prod or WINDROSE_MODE=dev to override auto detection
   - backup archives default to ./backups with 7-day retention
+    - legacy aliases kept: player-history, player-events, test-notify
 EOF
 }
 
@@ -806,9 +806,15 @@ player_events() {
     local lines="${1:-4000}"
     local events_file="$SCRIPT_DIR/backups/player-events.log"
     local seen_file="$SCRIPT_DIR/backups/player-events.seen"
+    local identities_file="$SCRIPT_DIR/backups/player-identities.tsv"
     local tmp_file
+    local log_tmp_file
+    local identity_tmp_file
     local parsed_count=0
     local new_count=0
+    local event_name=""
+    local event_id_key
+    declare -A known_names=()
 
     if [[ ! "$lines" =~ ^[0-9]+$ ]] || [[ "$lines" -le 0 ]]; then
         log_error "Invalid line count '$lines'. Use a positive integer."
@@ -816,21 +822,116 @@ player_events() {
     fi
 
     mkdir -p "$SCRIPT_DIR/backups"
-    touch "$events_file" "$seen_file"
+    touch "$events_file" "$seen_file" "$identities_file"
     tmp_file="$(mktemp)"
+    log_tmp_file="$(mktemp)"
+    identity_tmp_file="$(mktemp)"
 
     log_info "Scanning last $lines container log lines for structured join/leave events"
-    dc logs --no-color --timestamps --tail "$lines" "$SERVICE_NAME" 2>&1 \
-        | sed 's/\.[0-9]*Z/Z/' \
-        | awk '
-            function emit(ts, type, player, reason) {
+    dc logs --no-color --timestamps --tail "$lines" "$SERVICE_NAME" 2>&1 | sed 's/\.[0-9]*Z/Z/' > "$log_tmp_file"
+
+    # Update persistent identity map from account summary and login lines.
+    awk '
+        function trim(v) {
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
+            return v
+        }
+        {
+            line = $0
+            if (match(line, /Name '\''([^'\'']+)'\''.*AccountId '\''([A-Za-z0-9]+)'\''/, m)) {
+                print toupper(m[2]) "\t" trim(m[1])
+            }
+
+            if (match(line, /Login request:.*Name=([^?[:space:]]+).*userId:[[:space:]]*([^[:space:]]+)/, m)) {
+                print trim(m[2]) "\t" trim(m[1])
+            }
+        }
+    ' "$log_tmp_file" > "$identity_tmp_file"
+
+    if [[ -s "$identity_tmp_file" ]]; then
+        cat "$identities_file" "$identity_tmp_file" \
+            | awk -F '\t' 'NF >= 2 { key=$1; name=$2; if (key != "" && name != "") m[key]=name } END { for (k in m) print k "\t" m[k] }' \
+            | sort -t $'\t' -k1,1 > "$identities_file.tmp"
+        mv "$identities_file.tmp" "$identities_file"
+    fi
+
+    while IFS=$'\t' read -r event_id_key event_name; do
+        [[ -z "$event_id_key" || -z "$event_name" ]] && continue
+        known_names["$event_id_key"]="$event_name"
+    done < "$identities_file"
+
+    awk '
+            function is_invalid_player(player) {
+                player = toupper(player)
+                return (player == "" || player == "INVALID" || player == "NULL")
+            }
+
+            function emit(ts, type, player, reason, name) {
                 gsub(/^[[:space:]]+|[[:space:]]+$/, "", player)
-                if (player == "") {
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", name)
+                if (is_invalid_player(player)) {
+                    return
+                }
+                if (type == "join" && joined[player]) {
                     return
                 }
                 key = ts "|" type "|" player "|" reason
                 if (!seen[key]++) {
-                    print ts "\t" type "\t" player "\t" reason
+                    if (type == "join") {
+                        joined[player] = 1
+                    } else if (type == "leave") {
+                        joined[player] = 0
+                    }
+                    print ts "\t" type "\t" player "\t" reason "\t" name
+                }
+            }
+
+            function emit_inferred_join_if_missing(ts, player) {
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", player)
+                if (is_invalid_player(player)) {
+                    return
+                }
+                if (!(player in joined)) {
+                    emit(ts, "join", player, "join_inferred_p2p", identity_name[player])
+                }
+            }
+
+            function sanitize_reason(value) {
+                gsub(/[^[:alnum:]_]+/, "_", value)
+                gsub(/^_+|_+$/, "", value)
+                return tolower(value)
+            }
+
+            function best_player(account_id, unique_id, fallback) {
+                account_id = toupper(account_id)
+                if (unique_id != "") {
+                    return unique_id
+                }
+                if (account_id != "" && (account_id in acct_uid) && acct_uid[account_id] != "") {
+                    return acct_uid[account_id]
+                }
+                if (account_id != "") {
+                    return account_id
+                }
+                return fallback
+            }
+
+            function best_name(account_id, player, fallback_name) {
+                account_id = toupper(account_id)
+                if (account_id != "" && (account_id in acct_name) && acct_name[account_id] != "") {
+                    return acct_name[account_id]
+                }
+                if (player != "" && (player in identity_name) && identity_name[player] != "") {
+                    return identity_name[player]
+                }
+                return fallback_name
+            }
+
+            function remember_identity_name(player, name) {
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", player)
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", name)
+                if (!is_invalid_player(player) && name != "" && !(player in identity_name)) {
+                    identity_name[player] = name
                 }
             }
 
@@ -846,8 +947,98 @@ player_events() {
 
                 if (low ~ /lognet: join succeeded:/) {
                     if (match(line, /Join succeeded:[[:space:]]*(.*)$/, m)) {
-                        emit(ts, "join", m[1], "lognet_join")
+                        emit(ts, "join", m[1], "lognet_join", best_name("", m[1], ""))
                     }
+                    next
+                }
+
+                if (match(line, /UniqueId:[[:space:]]*([^ ,]+)/, m)) {
+                    unique = m[1]
+                    if (unique == "INVALID") {
+                        unique = ""
+                    }
+                } else {
+                    unique = ""
+                }
+
+                if (match(line, /PC:[[:space:]]*([^ ,]+)/, m)) {
+                    pc = m[1]
+                    if (toupper(pc) == "NULL" || toupper(pc) == "INVALID") {
+                        pc = ""
+                    }
+                } else {
+                    pc = ""
+                }
+
+                if (match(line, /BLPlayerSessionId=([a-z0-9]+)/, m)) {
+                    session_id = m[1]
+                } else {
+                    session_id = ""
+                }
+
+                if (match(line, /Name=([^?[:space:]]+)/, m)) {
+                    login_name = m[1]
+                } else {
+                    login_name = ""
+                }
+
+                if (match(line, /userId:[[:space:]]*([^[:space:]]+)/, m)) {
+                    user_id = m[1]
+                    if (toupper(user_id) == "INVALID" || toupper(user_id) == "NULL") {
+                        user_id = ""
+                    }
+                } else {
+                    user_id = ""
+                }
+
+                if (session_id != "" && user_id != "") {
+                    session_uid[session_id] = user_id
+                    remember_identity_name(user_id, login_name)
+                }
+
+                if (low ~ /notifyacceptedconnection|notifyacceptingconnection|login request|postlogin|addclientconnection/) {
+                    if (user_id != "") {
+                        emit(ts, "join", user_id, "join_inferred_net", best_name("", user_id, login_name))
+                    } else if (unique != "") {
+                        emit(ts, "join", unique, "join_inferred_net", best_name("", unique, login_name))
+                    } else if (pc != "") {
+                        emit(ts, "join", pc, "join_inferred_net", best_name("", pc, ""))
+                    }
+                    next
+                }
+
+                if (match(line, /OnAccountUePrelogin.*Address '\''([^'\'']+)'\''.*UniqueId '\''([^'\'']+)'\''/, m)) {
+                    addr_uid[m[1]] = m[2]
+                    remember_identity_name(m[2], login_name)
+                    next
+                }
+
+                if (match(line, /AccountId '\''([A-Za-z0-9]+)'\'' verified on Prelogin\. Address ([^ ]+)/, m)) {
+                    acct_id = toupper(m[1])
+                    addr_acct[m[2]] = acct_id
+                    if (m[2] in addr_uid) {
+                        acct_uid[acct_id] = addr_uid[m[2]]
+                    }
+                    next
+                }
+
+                if (match(low, /process addplayer\. accountid[[:space:]]+([a-z0-9]+)\. blplayersessionid[[:space:]]+([a-z0-9]+)/, m) || match(low, /add player\. accountid[[:space:]]+([a-z0-9]+)\. blplayersessionid[[:space:]]+([a-z0-9]+)/, m)) {
+                    acct_id = toupper(m[1])
+                    session_acct[m[2]] = acct_id
+                    if (m[2] in session_uid) {
+                        acct_uid[acct_id] = session_uid[m[2]]
+                    }
+                    next
+                }
+
+                if (match(low, /onueconnect.*\[([a-z0-9]+)\].*ue p2p connection created/, m)) {
+                    session_id = m[1]
+                    if (!(session_id in session_uid)) {
+                        next
+                    }
+                    acct_id = (session_id in session_acct) ? session_acct[session_id] : ""
+                    player = best_player(acct_id, (session_id in session_uid) ? session_uid[session_id] : "", session_id)
+                    emit(ts, "join", player, "ue_p2p_connected", best_name(acct_id, player, ""))
                     next
                 }
 
@@ -856,30 +1047,76 @@ player_events() {
                     next
                 }
 
+                if (match(line, /Name '\''([^'\'']+)'\''.*AccountId '\''([A-Za-z0-9]+)'\''.*State '\''([^'\'']+)'\''.*NetAddress '\''([^'\'']*)'\''.*FarewellReason[[:space:]]*(.*)$/, m)) {
+                    player_name = m[1]
+                    acct_id = toupper(m[2])
+                    account_state = m[3]
+                    net_address = m[4]
+                    farewell_reason = m[5]
+                    acct_name[acct_id] = player_name
+                    acct[acct_id] = player_name
+                    if (net_address in addr_uid) {
+                        acct_uid[acct_id] = addr_uid[net_address]
+                    } else if (match(net_address, /R5:([A-Za-z0-9]+)/, n) && (n[1] in session_uid)) {
+                        acct_uid[acct_id] = session_uid[n[1]]
+                    }
+                    player = best_player(acct_id, "", net_address)
+                    remember_identity_name(player, player_name)
+
+                    if (account_state == "SaidFarewell") {
+                        emit(ts, "leave", player, "saidfarewell_dump", player_name)
+                    } else if (account_state == "UePreloginVerified" || account_state == "ReadyToPlay") {
+                        emit(ts, "join", player, "account_" sanitize_reason(account_state), player_name)
+                    }
+                    next
+                }
+
                 if (low ~ /lognet: leave:/) {
                     if (match(line, /Leave:[[:space:]]*(.*)$/, m)) {
-                        emit(ts, "leave", m[1], "lognet_leave")
+                        emit(ts, "leave", m[1], "lognet_leave", best_name("", m[1], ""))
                     }
                     next
                 }
 
                 if (match(line, /Name '\''([^'\'']+)'\''.*State '\''SaidFarewell'\''/, m)) {
-                    emit(ts, "leave", m[1], "saidfarewell")
+                    emit(ts, "leave", m[1], "saidfarewell", m[1])
+                    next
+                }
+
+                if (low ~ /unetconnection::tick: connection graceful close timed out/) {
+                    if (unique != "") {
+                        emit_inferred_join_if_missing(ts, unique)
+                        emit(ts, "leave", unique, "leave_inferred_unet_close", best_name("", unique, ""))
+                    } else if (pc != "") {
+                        emit_inferred_join_if_missing(ts, pc)
+                        emit(ts, "leave", pc, "leave_inferred_unet_close", best_name("", pc, ""))
+                    }
                     next
                 }
 
                 if (match(low, /disconnectaccount.*accountid[[:space:]]+([a-z0-9]+)/, m)) {
                     acct_id = toupper(m[1])
+                    player = best_player(acct_id, "", acct_id)
                     if (acct_id in acct) {
-                        emit(ts, "leave", acct[acct_id], "disconnectaccount")
+                        emit(ts, "leave", player, "disconnectaccount", acct[acct_id])
+                    } else {
+                        emit(ts, "leave", player, "disconnectaccount", best_name(acct_id, player, ""))
                     }
                 }
             }
-        ' > "$tmp_file"
+        ' "$log_tmp_file" > "$tmp_file"
 
-    while IFS=$'\t' read -r event_ts event_type event_player event_reason; do
+    while IFS=$'\t' read -r event_ts event_type event_player event_reason event_name; do
         [[ -z "$event_ts" ]] && continue
         parsed_count=$((parsed_count + 1))
+
+        if [[ -z "$event_name" && -n "${known_names[$event_player]:-}" ]]; then
+            event_name="${known_names[$event_player]}"
+        fi
+
+        if [[ -n "$event_name" ]]; then
+            known_names["$event_player"]="$event_name"
+        fi
 
         local event_id
         local json_line
@@ -897,16 +1134,27 @@ player_events() {
                 --arg type "$event_type" \
                 --arg player "$event_player" \
                 --arg reason "$event_reason" \
-                '{ts:$ts, type:$type, player:$player, reason:$reason}')"
+                --arg name "$event_name" \
+                '{ts:$ts, type:$type, player:$player, reason:$reason} + (if $name != "" then {name:$name} else {} end)')"
         else
-            json_line="{\"ts\":\"$(json_escape "$event_ts")\",\"type\":\"$(json_escape "$event_type")\",\"player\":\"$(json_escape "$event_player")\",\"reason\":\"$(json_escape "$event_reason")\"}"
+            if [[ -n "$event_name" ]]; then
+                json_line="{\"ts\":\"$(json_escape "$event_ts")\",\"type\":\"$(json_escape "$event_type")\",\"player\":\"$(json_escape "$event_player")\",\"reason\":\"$(json_escape "$event_reason")\",\"name\":\"$(json_escape "$event_name")\"}"
+            else
+                json_line="{\"ts\":\"$(json_escape "$event_ts")\",\"type\":\"$(json_escape "$event_type")\",\"player\":\"$(json_escape "$event_player")\",\"reason\":\"$(json_escape "$event_reason")\"}"
+            fi
         fi
 
         printf '%s\n' "$json_line" | tee -a "$events_file"
         new_count=$((new_count + 1))
     done < "$tmp_file"
 
-    rm -f "$tmp_file"
+    : > "$identities_file.tmp"
+    for event_id_key in "${!known_names[@]}"; do
+        printf '%s\t%s\n' "$event_id_key" "${known_names[$event_id_key]}" >> "$identities_file.tmp"
+    done
+    sort -t $'\t' -k1,1 "$identities_file.tmp" > "$identities_file"
+
+    rm -f "$tmp_file" "$log_tmp_file" "$identity_tmp_file" "$identities_file.tmp"
 
     if [[ "$parsed_count" -eq 0 ]]; then
         log_warn "No join/leave patterns matched in the scanned log window."
@@ -919,6 +1167,118 @@ player_events() {
     fi
 
     log_ok "Appended $new_count new events to $events_file"
+}
+
+run_activity() {
+    local mode="${1:-events}"
+
+    case "$mode" in
+        events)
+            player_events "${2:-4000}"
+            ;;
+        history)
+            player_history "${2:-1200}"
+            ;;
+        help|-h|--help)
+            cat <<EOF
+Usage:
+  $SELF_NAME activity [events|history] [lines]
+
+Examples:
+  $SELF_NAME activity
+  $SELF_NAME activity events 4000
+  $SELF_NAME activity history 1200
+EOF
+            ;;
+        *)
+            log_error "Unknown activity mode '$mode'. Use: events, history"
+            exit 1
+            ;;
+    esac
+}
+
+run_notify_command() {
+    local mode="${1:-run}"
+
+    case "$mode" in
+        run|watch|start|"")
+            run_notifier
+            ;;
+        test)
+            shift || true
+            test_notifier "$@"
+            ;;
+        status)
+            notify_status
+            ;;
+        help|-h|--help)
+            cat <<EOF
+Usage:
+  $SELF_NAME notify
+  $SELF_NAME notify test [message]
+  $SELF_NAME notify status
+EOF
+            ;;
+        *)
+            log_error "Unknown notify mode '$mode'. Use: notify, notify test [message], notify status"
+            exit 1
+            ;;
+    esac
+}
+
+notify_status() {
+    local notify_pid_file="$SCRIPT_DIR/backups/notify.pid"
+    local notify_log_file="$SCRIPT_DIR/backups/notify.log"
+    local notify_pid=""
+    local provider="${NOTIFY_PROVIDER:-$(dotenv_value NOTIFY_PROVIDER || true)}"
+    local gotify_url="${GOTIFY_URL:-$(dotenv_value GOTIFY_URL || true)}"
+    local gotify_token="${GOTIFY_TOKEN:-$(dotenv_value GOTIFY_TOKEN || true)}"
+    local discord_webhook_url="${DISCORD_WEBHOOK_URL:-$(dotenv_value DISCORD_WEBHOOK_URL || true)}"
+    local resolved_provider=""
+
+    provider="${provider:-auto}"
+
+    if [[ -f "$notify_pid_file" ]]; then
+        notify_pid="$(head -n 1 "$notify_pid_file" 2>/dev/null || true)"
+        if [[ -n "$notify_pid" ]] && ! kill -0 "$notify_pid" >/dev/null 2>&1; then
+            rm -f "$notify_pid_file"
+            notify_pid=""
+        fi
+    fi
+
+    if [[ -z "$notify_pid" ]]; then
+        notify_pid="$(pgrep -f "$SCRIPT_DIR/notify.sh" | head -n 1 || true)"
+        if [[ -n "$notify_pid" ]]; then
+            mkdir -p "$(dirname "$notify_pid_file")"
+            printf '%s\n' "$notify_pid" > "$notify_pid_file"
+        fi
+    fi
+
+    if [[ "$provider" == "auto" ]]; then
+        if [[ -n "$gotify_url" && -n "$gotify_token" ]]; then
+            resolved_provider="gotify"
+        elif [[ -n "$discord_webhook_url" ]]; then
+            resolved_provider="discord"
+        else
+            resolved_provider="none"
+        fi
+    else
+        resolved_provider="$provider"
+    fi
+
+    if [[ -n "$notify_pid" ]]; then
+        log_ok "Activity notifier is running (PID $notify_pid)."
+    else
+        log_warn "Activity notifier is not running."
+    fi
+
+    log_info "Notify provider: $provider (resolved: $resolved_provider)"
+    log_info "Notify log file: $notify_log_file"
+
+    if [[ -f "$notify_log_file" ]]; then
+        log_info "Last notifier log lines:"
+        tail -n 10 "$notify_log_file"
+    fi
 }
 
 run_notifier() {
@@ -1668,6 +2028,10 @@ case "${1:-help}" in
     logs)
         follow_logs
         ;;
+    activity)
+        shift || true
+        run_activity "$@"
+        ;;
     player-history)
         player_history "${2:-1200}"
         ;;
@@ -1684,7 +2048,8 @@ case "${1:-help}" in
         switch_world
         ;;
     notify)
-        run_notifier
+        shift || true
+        run_notify_command "$@"
         ;;
     test-notify)
         shift || true

@@ -142,7 +142,7 @@ docker compose logs -f windrose
 Recommended image tags:
 
 ```text
-Stable: ghcr.io/uberdudepl/windrose-dedicated-server-docker:v1.3.1
+Stable: ghcr.io/uberdudepl/windrose-dedicated-server-docker:v1.3.2
 Latest: ghcr.io/uberdudepl/windrose-dedicated-server-docker:latest
 Staging fallback: ghcr.io/uberdudepl/windrose-dedicated-server-docker:staging
 Debug tools: ghcr.io/uberdudepl/windrose-dedicated-server-docker:debug
@@ -152,7 +152,7 @@ Set the image version in `.env` with:
 
 ```dotenv
 IMAGE_REPOSITORY=ghcr.io/uberdudepl/windrose-dedicated-server-docker
-IMAGE_TAG=v1.3.1
+IMAGE_TAG=v1.3.2
 ```
 
 ### Optional: development mode
@@ -171,6 +171,31 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml down
 ```
 
 The default [docker-compose.yml](docker-compose.yml) is for stable published images, while [docker-compose.dev.yml](docker-compose.dev.yml) is for local development.
+
+### Fast local test (no commit, no remote image pull)
+
+Use this flow when you want to test local changes immediately without committing and without pulling a new image from GHCR:
+
+```bash
+# 1) Build local image from current working tree
+docker compose -f docker-compose.yml -f docker-compose.dev.yml build windrose
+
+# 2) Start with the locally built image
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d windrose
+
+# 3) Watch startup logs
+docker compose -f docker-compose.yml -f docker-compose.dev.yml logs -f windrose
+```
+
+Notes:
+
+- `docker-compose.dev.yml` sets `image: windrose-ds:dev` and `pull_policy: never`, so Compose uses your local build.
+- This keeps existing mounted data (`./data`, `./steam-home`) and does not require any Git push/tag workflow.
+- If you only changed mounted scripts (`entrypoint.sh`, `healthcheck.sh`, files in `./scripts`), a rebuild is not required. Use:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml restart windrose
+```
 
 ### Image variants
 
@@ -268,7 +293,7 @@ MULTIHOME=0.0.0.0
 | `CONTAINER_NAME` | `windrose` | Change only if you run more than one server on the same host |
 | `HOSTNAME` | `localhost` | Internal container hostname used by ICE candidate discovery; keep `localhost` unless custom name resolves inside container |
 | `IMAGE_REPOSITORY` | GHCR repo | Published image repository |
-| `IMAGE_TAG` | `v1.3.1` | Stable image tag to run |
+| `IMAGE_TAG` | `v1.3.2` | Stable image tag to run |
 | `PUID` | `1000` | User id used for mounted files |
 | `PGID` | `1000` | Group id used for mounted files |
 | `UPDATE_ON_START` | `true` | Update and validate server files on startup |
@@ -388,10 +413,10 @@ docker compose logs -f windrose
 ./windrose status-json
 
 # Best-effort player activity lines from recent logs
-./windrose player-history
+./windrose activity history
 
 # Structured join/leave events (JSONL)
-./windrose player-events
+./windrose activity events
 
 # Check server process inside container
 docker compose exec windrose pgrep -a WindroseServer
@@ -416,10 +441,11 @@ chmod +x ./windrose ./serverctl.sh
 ./windrose worlds-check
 ./windrose update
 ./windrose status-json
-./windrose player-history
-./windrose player-events
+./windrose activity history
+./windrose activity events
 ./windrose notify
-./windrose test-notify
+./windrose notify status
+./windrose notify test
 ./windrose backup
 ./windrose install-backup-cron
 ./windrose setup
@@ -455,10 +481,15 @@ If command `3` returns lines repeatedly, check outbound connectivity and firewal
 
 For a machine-readable snapshot, use `./windrose status-json`.
 
-For quick player activity extraction from logs, use `./windrose player-history [lines]`.
+For quick player activity extraction from logs, use `./windrose activity history [lines]`.
 
-For structured join/leave records, use `./windrose player-events [lines]`.
+For structured join/leave records, use `./windrose activity events [lines]`.
 Events are appended as JSON lines to `./backups/player-events.log`.
+The parser is best-effort and now prefers richer Windrose/UE markers such as `Login request`, prelogin/account verification, and account summary dumps when they are present.
+Entries may also include an optional `name` field when the server log exposes a human-readable player name.
+A persistent identity map is maintained in `./backups/player-identities.tsv` and reused to improve name resolution for disconnect events.
+
+Legacy aliases are still supported for backward compatibility: `./windrose player-history`, `./windrose player-events`.
 
 ---
 
@@ -481,13 +512,19 @@ If `NOTIFY_PROVIDER=auto`, the script prefers Gotify when it is configured, othe
 1. Test the webhook once before long-term use:
 
 ```bash
-./windrose test-notify
+./windrose notify test
 ```
 
 1. Start the watcher:
 
 ```bash
 ./windrose notify
+```
+
+1. Check watcher status and effective backend:
+
+```bash
+./windrose notify status
 ```
 
 The helper asks whether to run in background mode. If you start it in background mode, running `./windrose notify` again detects the running watcher and offers to stop it.
@@ -499,6 +536,7 @@ Background logs are written to:
 ```
 
 At the moment this is log-based and best-effort. Disconnect events are easier to detect reliably than joins, so treat it as a lightweight helper rather than a perfect audit system.
+When available, the notifier also uses `./backups/player-identities.tsv` to resolve player names for disconnect lines that do not contain a name directly.
 
 ---
 
@@ -731,7 +769,7 @@ For this repository default (`network_mode: host`), this specific bridge-NAT iss
 
 ## Image versions
 
-- Most users should keep `IMAGE_TAG=v1.3.1` for a stable server.
+- Most users should keep `IMAGE_TAG=v1.3.2` for a stable server.
 - Use `latest` only for testing.
 - Use `staging` only as a fallback for Wine compatibility issues on a specific host.
 - Use `debug` when you need extra troubleshooting tools inside the image.
@@ -778,7 +816,7 @@ This usually means the mounted host directories are owned by a different user th
 Use the built-in test command before you start the watcher:
 
 ```bash
-./windrose test-notify
+./windrose notify test
 ```
 
 ### How do I update safely on production?
@@ -796,7 +834,7 @@ Use `./windrose update-log [lines]` to quickly inspect recent update details fro
 
 ### What is the difference between stable and latest?
 
-Use a pinned version tag such as `v1.3.1` for production stability. Use `latest` only when you want the newest changes for testing.
+Use a pinned version tag such as `v1.3.2` for production stability. Use `latest` only when you want the newest changes for testing.
 
 ### When should I try `staging` or `debug`?
 

@@ -15,6 +15,7 @@ GOTIFY_PRIORITY="${GOTIFY_PRIORITY:-5}"
 NOTIFY_DEDUPE_WINDOW="${NOTIFY_DEDUPE_WINDOW:-90}"
 NOTIFY_TAIL_LINES="${NOTIFY_TAIL_LINES:-0}"
 NOTIFY_DEBUG="${NOTIFY_DEBUG:-false}"
+IDENTITY_MAP_FILE="${IDENTITY_MAP_FILE:-$SCRIPT_DIR/backups/player-identities.tsv}"
 
 declare -A PLAYER_NAMES=()
 declare -A RECENT_EVENTS=()
@@ -41,6 +42,35 @@ load_env_file() {
 }
 
 load_env_file
+
+load_identity_map() {
+  [[ -f "$IDENTITY_MAP_FILE" ]] || return 0
+
+  while IFS=$'\t' read -r key value || [[ -n "${key:-}" ]]; do
+    key="$(trim "${key:-}")"
+    value="$(trim "${value:-}")"
+    [[ -z "$key" || -z "$value" ]] && continue
+    PLAYER_NAMES["$key"]="$value"
+  done < "$IDENTITY_MAP_FILE"
+}
+
+persist_identity_map() {
+  local key
+  local dir
+
+  dir="$(dirname "$IDENTITY_MAP_FILE")"
+  mkdir -p "$dir"
+
+  : > "$IDENTITY_MAP_FILE.tmp"
+  for key in "${!PLAYER_NAMES[@]}"; do
+    [[ -z "$key" ]] && continue
+    [[ -z "${PLAYER_NAMES[$key]}" ]] && continue
+    printf '%s\t%s\n' "$key" "${PLAYER_NAMES[$key]}" >> "$IDENTITY_MAP_FILE.tmp"
+  done
+
+  sort -t $'\t' -k1,1 "$IDENTITY_MAP_FILE.tmp" > "$IDENTITY_MAP_FILE"
+  rm -f "$IDENTITY_MAP_FILE.tmp"
+}
 
 usage() {
   cat <<EOF
@@ -215,23 +245,49 @@ is_raw_identifier() {
 remember_player_name() {
   local uid="$1"
   local name="$2"
+  local null_uid=""
 
   if [[ -n "$uid" && -n "$name" && "$name" != "Unknown player" ]] && ! is_raw_identifier "$name"; then
+    null_uid="NULL:$uid"
+
+    if [[ "${PLAYER_NAMES[$uid]:-}" == "$name" && "${PLAYER_NAMES[$null_uid]:-}" == "$name" ]]; then
+      return
+    fi
+
     PLAYER_NAMES["$uid"]="$name"
+    PLAYER_NAMES["$null_uid"]="$name"
+    persist_identity_map
   fi
+}
+
+is_summary_line() {
+  local line="$1"
+  local lower_line="${line,,}"
+
+  [[ "$lower_line" == *"connected accounts"* || "$lower_line" == *"disconnected accounts"* ]]
 }
 
 resolve_player_label() {
   local uid="$1"
   local who="$2"
+  local uid_null=""
 
   if [[ -n "$who" ]] && ! is_raw_identifier "$who"; then
     printf '%s' "$who"
     return
   fi
 
+  if [[ -n "$uid" ]]; then
+    uid_null="NULL:$uid"
+  fi
+
   if [[ -n "$uid" && -n "${PLAYER_NAMES[$uid]:-}" ]] && ! is_raw_identifier "${PLAYER_NAMES[$uid]}"; then
     printf '%s' "${PLAYER_NAMES[$uid]}"
+    return
+  fi
+
+  if [[ -n "$uid_null" && -n "${PLAYER_NAMES[$uid_null]:-}" ]] && ! is_raw_identifier "${PLAYER_NAMES[$uid_null]}"; then
+    printf '%s' "${PLAYER_NAMES[$uid_null]}"
     return
   fi
 
@@ -274,6 +330,7 @@ parse_line() {
 
   line="$(normalize_line "$raw_line")"
   [[ -z "$line" ]] && return
+  is_summary_line "$line" && return
 
   uid="$(extract_uid "$line")"
   who="$(extract_name "$line")"
@@ -297,6 +354,10 @@ parse_line() {
 
   if is_join_candidate "$line"; then
     debug_log "join candidate: $line"
+
+    if [[ "$label" == "Player" && -z "$uid" && -z "$who" ]]; then
+      return
+    fi
 
     if [[ "$label" == "Player" ]]; then
       event_key="join:${uid:-unknown}"
@@ -323,6 +384,7 @@ main() {
   fi
 
   init_docker_cmd
+  load_identity_map
   echo "[notify] Watching $SERVICE_NAME logs for player activity via $(resolve_provider)..."
   "${DOCKER_CMD[@]}" compose -f "$SCRIPT_DIR/docker-compose.yml" logs --tail="$NOTIFY_TAIL_LINES" -f "$SERVICE_NAME" | while IFS= read -r line; do
     parse_line "$line"

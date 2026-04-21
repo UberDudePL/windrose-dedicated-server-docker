@@ -62,6 +62,10 @@ find_server_exe() {
   find "$SERVERDIR" -iname 'WindroseServer-Win64-Shipping.exe' | head -n 1 || true
 }
 
+server_launch_args() {
+  printf '%s' "-log -stdout -FullStdOutLogOutput -AllowStdOutLogVerbosity -forcelogflush -UTF8Output -MULTIHOME=$(quote "$MULTIHOME") -PORT=$(quote "$PORT") -QUERYPORT=$(quote "$QUERYPORT")"
+}
+
 first_run_generate_config() {
   local exe="$1"
 
@@ -70,7 +74,7 @@ first_run_generate_config() {
   fi
 
   log_info "First run detected, generating default server config"
-  run_wine_as_steam "WINEPREFIX=$(quote "$WINEPREFIX") wine $(quote "$exe") -log -MULTIHOME=$(quote "$MULTIHOME") -PORT=$(quote "$PORT") -QUERYPORT=$(quote "$QUERYPORT") >/tmp/windrose-first-run.log 2>&1" &
+  run_wine_as_steam "WINEPREFIX=$(quote "$WINEPREFIX") wine $(quote "$exe") $(server_launch_args) >/tmp/windrose-first-run.log 2>&1" &
   local warmup_pid=$!
 
   local count=0
@@ -133,7 +137,7 @@ start_server() {
   log_info "Starting Windrose dedicated server"
   log_info "Executable: $exe"
 
-  run_wine_as_steam "wine $(quote "$exe") -log -MULTIHOME=$(quote "$MULTIHOME") -PORT=$(quote "$PORT") -QUERYPORT=$(quote "$QUERYPORT")" &
+  run_wine_as_steam "wine $(quote "$exe") $(server_launch_args)" &
   SERVER_PID=$!
 
   if wait "$SERVER_PID"; then
