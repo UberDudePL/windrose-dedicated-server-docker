@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# shellcheck disable=SC2034 # Used by sourced script: /opt/windrose/scripts/server.sh
+APPID=${WINDROSE_APP_ID:-4129620}
+
 SERVERDIR=${SERVERDIR:-/data}
 STEAM_HOME=${STEAM_HOME:-/home/steam}
 WINEPREFIX=${WINEPREFIX:-$STEAM_HOME/.wine}
@@ -23,6 +26,11 @@ SERVER_PASSWORD=${SERVER_PASSWORD:-}
 MAX_PLAYERS=${MAX_PLAYERS:-4}
 P2P_PROXY_ADDRESS=${P2P_PROXY_ADDRESS:-127.0.0.1}
 FIRST_RUN_TIMEOUT=${FIRST_RUN_TIMEOUT:-300}
+
+# shellcheck disable=SC2034 # Used by sourced script: /opt/windrose/scripts/server.sh
+SERVER_PID=""
+# shellcheck disable=SC2034 # Used by sourced script: /opt/windrose/scripts/server.sh
+SERVER_DESC="$SERVERDIR/R5/ServerDescription.json"
 
 SCRIPT_ROOT=${WINDROSE_SCRIPT_DIR:-/opt/windrose/scripts}
 

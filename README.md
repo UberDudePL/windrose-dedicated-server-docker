@@ -384,6 +384,15 @@ docker compose logs -f windrose
 # Show detailed update log (default: last 120 lines)
 ./windrose update-log
 
+# JSON snapshot for monitoring integrations
+./windrose status-json
+
+# Best-effort player activity lines from recent logs
+./windrose player-history
+
+# Structured join/leave events (JSONL)
+./windrose player-events
+
 # Check server process inside container
 docker compose exec windrose pgrep -a WindroseServer
 
@@ -406,6 +415,9 @@ chmod +x ./windrose ./serverctl.sh
 ./windrose worlds
 ./windrose worlds-check
 ./windrose update
+./windrose status-json
+./windrose player-history
+./windrose player-events
 ./windrose notify
 ./windrose test-notify
 ./windrose backup
@@ -440,6 +452,13 @@ docker compose logs --no-color --tail 400 windrose | grep -Ei "account verificat
 ```
 
 If command `3` returns lines repeatedly, check outbound connectivity and firewall/NAT behavior for `*.windrose.support` on UDP/TCP `3478`.
+
+For a machine-readable snapshot, use `./windrose status-json`.
+
+For quick player activity extraction from logs, use `./windrose player-history [lines]`.
+
+For structured join/leave records, use `./windrose player-events [lines]`.
+Events are appended as JSON lines to `./backups/player-events.log`.
 
 ---
 

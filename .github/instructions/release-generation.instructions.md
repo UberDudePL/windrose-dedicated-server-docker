@@ -2,6 +2,8 @@ When writing GitHub release notes for a tag:
 - Use this exact wrapper format:
 	- TOP: <release title>
 	- DESCRIPTION: <release body in markdown>
+- TOP title style must be: `vX.Y.Z — Short headline` (example: `v1.2.3 — Safer waters ahead`).
+- Put the final TOP/DESCRIPTION output in a markdown code block for easy copy-paste.
 - Write in English.
 - Use a playful pirate tone, but keep it readable and professional.
 - Start with the release name and version.
@@ -11,7 +13,7 @@ When writing GitHub release notes for a tag:
 - Add light pirate flavor only to headings, transitions, and short commentary.
 - Do not affect code, identifiers, commands, or environment variables.
 - Keep the release note short enough to scan quickly.
-- Description starts with "##⚓ Windrose Dedicated Server Docker" and the version number
+- Description starts with "## ⚓ Windrose Dedicated Server Docker" and the version number
 
 Before creating or publishing a new tag:
 - Update `IMAGE_TAG` in `.env.example` to the new version.

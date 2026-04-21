@@ -175,7 +175,10 @@ Usage:
   $SELF_NAME stop
   $SELF_NAME restart
   $SELF_NAME status
+  $SELF_NAME status-json
   $SELF_NAME logs
+  $SELF_NAME player-history [lines]
+  $SELF_NAME player-events [lines]
   $SELF_NAME worlds
   $SELF_NAME worlds-check
   $SELF_NAME switch
@@ -704,11 +707,218 @@ status_server() {
     dc ps
 }
 
+status_json() {
+    local container_name running health="unknown"
+    local invite_code="" world_id="" server_name=""
+    local generated_at
+
+    container_name="$(dotenv_value CONTAINER_NAME || true)"
+    container_name="${container_name:-$SERVICE_NAME}"
+
+    if server_is_running; then
+        running="true"
+    else
+        running="false"
+    fi
+
+    health="$("${DOCKER_CMD[@]}" inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container_name" 2>/dev/null || true)"
+    health="${health//$'\n'/}"
+    if [[ -z "$health" ]]; then
+        health="not-found"
+    fi
+    generated_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+    if [[ -f "$SERVER_DESC_FILE" ]] && command -v jq >/dev/null 2>&1; then
+        invite_code="$(jq -r '.ServerDescription_Persistent.InviteCode // .InviteCode // empty' "$SERVER_DESC_FILE" 2>/dev/null || true)"
+        world_id="$(jq -r '.ServerDescription_Persistent.WorldIslandId // empty' "$SERVER_DESC_FILE" 2>/dev/null || true)"
+        server_name="$(jq -r '.ServerDescription_Persistent.ServerName // empty' "$SERVER_DESC_FILE" 2>/dev/null || true)"
+    fi
+
+    if command -v jq >/dev/null 2>&1; then
+        jq -n \
+            --arg mode "$ACTIVE_MODE" \
+            --arg service "$SERVICE_NAME" \
+            --arg container "$container_name" \
+            --arg running "$running" \
+            --arg health "$health" \
+            --arg invite_code "$invite_code" \
+            --arg world_id "$world_id" \
+            --arg server_name "$server_name" \
+            --arg generated_at "$generated_at" \
+            '{
+                mode: $mode,
+                service: $service,
+                container: $container,
+                running: ($running == "true"),
+                health: $health,
+                invite_code: $invite_code,
+                world_id: $world_id,
+                server_name: $server_name,
+                generated_at: $generated_at
+            }'
+    else
+        printf '{"mode":"%s","service":"%s","container":"%s","running":%s,"health":"%s","invite_code":"%s","world_id":"%s","server_name":"%s","generated_at":"%s"}\n' \
+            "$ACTIVE_MODE" "$SERVICE_NAME" "$container_name" "$running" "$health" "$invite_code" "$world_id" "$server_name" "$generated_at"
+    fi
+}
+
 follow_logs() {
     log_info "Following logs"
     dc logs --timestamps -f "$SERVICE_NAME" | sed 's/\.[0-9]*Z/Z/' | sed \
         -e $'s/\(.*Error.*\)/\x1b[0;31m\\1\x1b[0m/' \
         -e $'s/\(.*Warning.*\)/\x1b[1;33m\\1\x1b[0m/'
+}
+
+json_escape() {
+    local value="$1"
+    value="${value//\\/\\\\}"
+    value="${value//\"/\\\"}"
+    value="${value//$'\n'/ }"
+    value="${value//$'\r'/}"
+    printf '%s' "$value"
+}
+
+player_history() {
+    local lines="${1:-1200}"
+    local history_file="$SCRIPT_DIR/backups/player-history.log"
+
+    if [[ ! "$lines" =~ ^[0-9]+$ ]] || [[ "$lines" -le 0 ]]; then
+        log_error "Invalid line count '$lines'. Use a positive integer."
+        exit 1
+    fi
+
+    mkdir -p "$(dirname "$history_file")"
+
+    log_info "Scanning last $lines container log lines for player activity (best-effort)"
+    if ! dc logs --no-color --timestamps --tail "$lines" "$SERVICE_NAME" 2>&1 \
+        | sed 's/\.[0-9]*Z/Z/' \
+        | grep -Ei 'lognet: join succeeded|lognet: leave:|saidfarewell|disconnectaccount' \
+        | grep -iv 'server account was not found' \
+        | tee -a "$history_file"; then
+        log_warn "No player activity lines matched in the scanned log window."
+        return 0
+    fi
+
+    log_ok "Player activity lines appended to $history_file"
+}
+
+player_events() {
+    local lines="${1:-4000}"
+    local events_file="$SCRIPT_DIR/backups/player-events.log"
+    local seen_file="$SCRIPT_DIR/backups/player-events.seen"
+    local tmp_file
+    local parsed_count=0
+    local new_count=0
+
+    if [[ ! "$lines" =~ ^[0-9]+$ ]] || [[ "$lines" -le 0 ]]; then
+        log_error "Invalid line count '$lines'. Use a positive integer."
+        exit 1
+    fi
+
+    mkdir -p "$SCRIPT_DIR/backups"
+    touch "$events_file" "$seen_file"
+    tmp_file="$(mktemp)"
+
+    log_info "Scanning last $lines container log lines for structured join/leave events"
+    dc logs --no-color --timestamps --tail "$lines" "$SERVICE_NAME" 2>&1 \
+        | sed 's/\.[0-9]*Z/Z/' \
+        | awk '
+            function emit(ts, type, player, reason) {
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", player)
+                if (player == "") {
+                    return
+                }
+                key = ts "|" type "|" player "|" reason
+                if (!seen[key]++) {
+                    print ts "\t" type "\t" player "\t" reason
+                }
+            }
+
+            {
+                line = $0
+                low = tolower(line)
+                ts = ""
+                if (match(line, /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[^ ]+/)) {
+                    ts = substr(line, RSTART, RLENGTH)
+                } else {
+                    ts = strftime("%Y-%m-%dT%H:%M:%SZ")
+                }
+
+                if (low ~ /lognet: join succeeded:/) {
+                    if (match(line, /Join succeeded:[[:space:]]*(.*)$/, m)) {
+                        emit(ts, "join", m[1], "lognet_join")
+                    }
+                    next
+                }
+
+                if (match(line, /AccountName '\''([^'\'']+)'\''.*AccountId[[:space:]]+([A-Za-z0-9]+)/, m)) {
+                    acct[toupper(m[2])] = m[1]
+                    next
+                }
+
+                if (low ~ /lognet: leave:/) {
+                    if (match(line, /Leave:[[:space:]]*(.*)$/, m)) {
+                        emit(ts, "leave", m[1], "lognet_leave")
+                    }
+                    next
+                }
+
+                if (match(line, /Name '\''([^'\'']+)'\''.*State '\''SaidFarewell'\''/, m)) {
+                    emit(ts, "leave", m[1], "saidfarewell")
+                    next
+                }
+
+                if (match(low, /disconnectaccount.*accountid[[:space:]]+([a-z0-9]+)/, m)) {
+                    acct_id = toupper(m[1])
+                    if (acct_id in acct) {
+                        emit(ts, "leave", acct[acct_id], "disconnectaccount")
+                    }
+                }
+            }
+        ' > "$tmp_file"
+
+    while IFS=$'\t' read -r event_ts event_type event_player event_reason; do
+        [[ -z "$event_ts" ]] && continue
+        parsed_count=$((parsed_count + 1))
+
+        local event_id
+        local json_line
+        event_id="$event_ts|$event_type|$event_player|$event_reason"
+
+        if grep -Fqx "$event_id" "$seen_file"; then
+            continue
+        fi
+
+        printf '%s\n' "$event_id" >> "$seen_file"
+
+        if command -v jq >/dev/null 2>&1; then
+            json_line="$(jq -cn \
+                --arg ts "$event_ts" \
+                --arg type "$event_type" \
+                --arg player "$event_player" \
+                --arg reason "$event_reason" \
+                '{ts:$ts, type:$type, player:$player, reason:$reason}')"
+        else
+            json_line="{\"ts\":\"$(json_escape "$event_ts")\",\"type\":\"$(json_escape "$event_type")\",\"player\":\"$(json_escape "$event_player")\",\"reason\":\"$(json_escape "$event_reason")\"}"
+        fi
+
+        printf '%s\n' "$json_line" | tee -a "$events_file"
+        new_count=$((new_count + 1))
+    done < "$tmp_file"
+
+    rm -f "$tmp_file"
+
+    if [[ "$parsed_count" -eq 0 ]]; then
+        log_warn "No join/leave patterns matched in the scanned log window."
+        return 0
+    fi
+
+    if [[ "$new_count" -eq 0 ]]; then
+        log_info "No new unique events detected (all matched events were already recorded)."
+        return 0
+    fi
+
+    log_ok "Appended $new_count new events to $events_file"
 }
 
 run_notifier() {
@@ -1452,8 +1662,17 @@ case "${1:-help}" in
     status|ps)
         status_server
         ;;
+    status-json)
+        status_json
+        ;;
     logs)
         follow_logs
+        ;;
+    player-history)
+        player_history "${2:-1200}"
+        ;;
+    player-events)
+        player_events "${2:-4000}"
         ;;
     worlds)
         list_worlds

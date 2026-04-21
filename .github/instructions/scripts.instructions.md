@@ -26,3 +26,8 @@ applyTo: "**/*.{sh,bash}"
 - Prefer small helper functions only when they improve readability.
 - Avoid unnecessary abstraction, frameworks, or meta-scripting.
 - Preserve existing entrypoint contract and argument behavior unless explicitly requested.
+
+## Usage output consistency
+- In `serverctl.sh` `usage()` output, keep each command line under `Usage:` aligned with exactly two leading spaces.
+- Do not add extra indentation for newly added commands.
+- After editing `usage()`, quickly verify alignment in raw output (for example with `cat -vet`).
