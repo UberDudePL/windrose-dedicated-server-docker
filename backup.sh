@@ -27,6 +27,10 @@ log_error() {
   echo -e "${_COLOR_RED}[windrose]${_COLOR_RESET} $*"
 }
 
+prompt_text() {
+  printf '%b' "${_COLOR_YELLOW}[windrose]${_COLOR_RESET} $1"
+}
+
 log_step() {
   echo -ne "${_COLOR_CYAN}[windrose]${_COLOR_RESET} $1..."
 }
@@ -153,8 +157,7 @@ ensure_zip_available() {
     return 1
   fi
 
-  echo -ne "${_COLOR_YELLOW}[windrose]${_COLOR_RESET} zip command not found. Install it now? [y/N]: "
-  read -r answer
+  read -r -p "$(prompt_text "zip command not found. Install it now? ${_COLOR_YELLOW}[y/N]${_COLOR_RESET}: ")" answer
   case "$answer" in
     y|Y|yes|YES)
       log_info "Installing zip package..."

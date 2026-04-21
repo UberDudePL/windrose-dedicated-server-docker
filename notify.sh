@@ -97,7 +97,7 @@ Usage:
   $(basename "$0") test [optional message]
 
 Environment:
-  NOTIFY_PROVIDER=auto|discord|gotify
+  NOTIFY_PROVIDER=auto|discord|gotify|both
   DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
   GOTIFY_URL=https://gotify.example.com
   GOTIFY_TOKEN=your_app_token
@@ -170,6 +170,7 @@ send_gotify() {
 send_notification() {
   local content="$1"
   local provider
+  local sent=false
   provider="$(resolve_provider)"
 
   case "$provider" in
@@ -178,6 +179,23 @@ send_notification() {
       ;;
     gotify)
       send_gotify "$content" || echo "[notify] Failed to send Gotify notification" >&2
+      ;;
+    both)
+      if send_discord "$content"; then
+        sent=true
+      else
+        echo "[notify] Failed to send Discord notification" >&2
+      fi
+
+      if send_gotify "$content"; then
+        sent=true
+      else
+        echo "[notify] Failed to send Gotify notification" >&2
+      fi
+
+      if [[ "$sent" != "true" ]]; then
+        echo "[notify] Failed to send notification via both backends" >&2
+      fi
       ;;
     *)
       echo "[notify] No notification backend configured; event: $content"
@@ -188,6 +206,7 @@ send_notification() {
 test_notification() {
   local message="${1:-⚓ Test notification from Windrose server}"
   local provider
+  local sent=false
 
   provider="$(resolve_provider)"
   echo "[notify] Sending test notification via $provider..."
@@ -198,6 +217,23 @@ test_notification() {
       ;;
     gotify)
       send_gotify "$message"
+      ;;
+    both)
+      if send_discord "$message"; then
+        sent=true
+      else
+        echo "[notify] Failed to send Discord notification" >&2
+      fi
+
+      if send_gotify "$message"; then
+        sent=true
+      else
+        echo "[notify] Failed to send Gotify notification" >&2
+      fi
+
+      if [[ "$sent" != "true" ]]; then
+        return 1
+      fi
       ;;
     *)
       echo "[notify] No notification backend configured."
@@ -243,10 +279,15 @@ extract_name() {
   local name=""
 
   name=$(printf '%s' "$line" | sed -nE 's/.*(DisplayName|PlayerName|Nickname|UserName)[:=][[:space:]]*"?([^",]+)"?.*/\2/p' | head -n 1)
+  [[ -z "$name" ]] && name=$(printf '%s' "$line" | sed -nE 's/.*(DisplayName|PlayerName|Nickname|UserName)[[:space:]]+([^", ]+).*/\2/p' | head -n 1)
   [[ -z "$name" ]] && name=$(printf '%s' "$line" | sed -nE 's/.*Join succeeded:[[:space:]]*(.*)$/\1/p' | head -n 1)
   [[ -z "$name" ]] && name=$(printf '%s' "$line" | sed -nE "s/.*Name '([^']+)'.*AccountId.*/\1/p" | head -n 1)
+  [[ -z "$name" ]] && name=$(printf '%s' "$line" | sed -nE 's/.*Login request[^\"]*"([^\"]+)".*/\1/p' | head -n 1)
+  [[ -z "$name" ]] && name=$(printf '%s' "$line" | sed -nE "s/.*Login request[^']*'([^']+)'.*/\1/p" | head -n 1)
+  [[ -z "$name" ]] && name=$(printf '%s' "$line" | sed -nE 's/.*[?&](DisplayName|PlayerName|Nickname|UserName|Name)=([^ ?&,]+).*/\2/p' | head -n 1)
   [[ -z "$name" ]] && name=$(printf '%s' "$line" | sed -nE 's/.*[?&]Name=([^ ?&,]+).*/\1/p' | head -n 1)
   [[ -z "$name" ]] && name=$(printf '%s' "$line" | sed -nE 's/.*player[[:space:]]+([^ ]+)[[:space:]]+(joined|connected|disconnected).*/\1/pI' | head -n 1)
+  name="${name//+/ }"
   name=$(printf '%s' "$name" | sed -E 's/[[:space:]]+(UniqueId:.*|AccountId.*|joined.*|connected.*|disconnected.*)$//I')
   printf '%s' "$(trim "$name")"
 }
@@ -283,7 +324,7 @@ is_summary_line() {
   local line="$1"
   local lower_line="${line,,}"
 
-  [[ "$lower_line" == *"connected accounts"* || "$lower_line" == *"disconnected accounts"* ]]
+  [[ "$lower_line" == *"connected accounts"* || "$lower_line" == *"disconnected accounts"* || "$lower_line" == *"reserved accounts"* ]]
 }
 
 resolve_player_label() {
@@ -339,7 +380,13 @@ is_join_candidate() {
   local line="$1"
   local lower_line="${line,,}"
 
-  [[ "$lower_line" == *"join succeeded"* || "$lower_line" == *" joined"* || "$lower_line" == *" connected"* || "$lower_line" == *"login request"* || "$lower_line" == *"join request"* || "$lower_line" == *"postlogin"* || "$lower_line" == *"notifyacceptingconnection accepted"* ]]
+  # Ignore account/state snapshots that can mention connected players long after join.
+  if [[ "$lower_line" == *"state connected"* || "$lower_line" == *"connected accounts"* || "$lower_line" == *"reserved accounts"* || "$lower_line" == *"disconnected accounts"* ]]; then
+    return 1
+  fi
+
+  # Use only strong join signals to avoid stale false positives.
+  [[ "$lower_line" == *"join succeeded"* || "$lower_line" == *"login request"* || "$lower_line" == *"join request"* || "$lower_line" == *"notifyacceptingconnection accepted"* ]]
 }
 
 parse_line() {
@@ -359,11 +406,13 @@ parse_line() {
   if is_disconnect_candidate "$line"; then
     debug_log "disconnect candidate: $line"
 
+    # Skip generic disconnect lines without a resolved player name.
+    # They often appear before richer lines and can cause duplicate alerts.
     if [[ "$label" == "Player" ]]; then
-      event_key="disconnect:unknown"
-    else
-      event_key="disconnect:${uid:-$label}"
+      return
     fi
+
+    event_key="disconnect:${uid:-$label}"
 
     if should_send_event "$event_key"; then
       send_notification "⚓ $label disconnected from $server_name"
@@ -378,11 +427,13 @@ parse_line() {
       return
     fi
 
+    # Avoid sending generic join notifications without a readable player name.
+    # A later line often contains DisplayName/UserName for the same account.
     if [[ "$label" == "Player" ]]; then
-      event_key="join:${uid:-unknown}"
-    else
-      event_key="join:${uid:-$label}"
+      return
     fi
+
+    event_key="join:${uid:-$label}"
 
     if should_send_event "$event_key"; then
       send_notification "⚓ $label joined $server_name"
@@ -391,6 +442,8 @@ parse_line() {
 }
 
 main() {
+  local watch_since
+
   if [[ "${1:-}" == "help" || "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
     usage
     exit 0
@@ -404,8 +457,11 @@ main() {
 
   init_docker_cmd
   load_identity_map
-  echo "[notify] Watching $SERVICE_NAME logs for player activity via $(resolve_provider)..."
-  "${DOCKER_CMD[@]}" compose -f "$SCRIPT_DIR/docker-compose.yml" logs --tail="$NOTIFY_TAIL_LINES" -f "$SERVICE_NAME" | while IFS= read -r line; do
+
+  # Start watching from "now" to avoid replaying historical joins/leaves.
+  watch_since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "[notify] Watching $SERVICE_NAME logs since $watch_since for player activity via $(resolve_provider)..."
+  "${DOCKER_CMD[@]}" compose -f "$SCRIPT_DIR/docker-compose.yml" logs --since="$watch_since" --tail="$NOTIFY_TAIL_LINES" -f "$SERVICE_NAME" | while IFS= read -r line; do
     parse_line "$line"
   done
 }

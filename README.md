@@ -19,7 +19,7 @@ Self-hosted dedicated server for [Windrose](https://store.steampowered.com/app/2
 - [Useful commands](#useful-commands)
 - [Optional helper launcher](#optional-helper-launcher)
 - [Quick diagnostics](#quick-diagnostics)
-- [Activity notifications: Discord or Gotify](#activity-notifications-discord-or-gotify)
+- [Activity notifications: Discord, Gotify, or both](#activity-notifications-discord-gotify-or-both)
 - [Save transfer and world selection](#save-transfer-and-world-selection)
 - [Backup saves](#backup-saves)
 - [Directory structure](#directory-structure)
@@ -42,7 +42,7 @@ Self-hosted dedicated server for [Windrose](https://store.steampowered.com/app/2
 - Stable helper commands for start/stop/restart/logs/diagnostics and world management
 - Save transfer workflow with explicit `WorldIslandId` mapping and versioned world paths
 - Built-in backup tooling (`./windrose backup`, cron installer, retention controls)
-- Optional Discord/Gotify activity notifications plus notifier test command
+- Optional Discord/Gotify activity notifications (or both at once) plus notifier test command
 - Multiple image channels (`stable`, `latest`, `staging`, `debug`) for operations and troubleshooting
 - Production-friendly defaults: host networking, restart policy, healthcheck, and log rotation
 
@@ -142,7 +142,7 @@ docker compose logs -f windrose
 Recommended image tags:
 
 ```text
-Stable: ghcr.io/uberdudepl/windrose-dedicated-server-docker:v1.3.2
+Stable: ghcr.io/uberdudepl/windrose-dedicated-server-docker:v1.3.3
 Latest: ghcr.io/uberdudepl/windrose-dedicated-server-docker:latest
 Staging fallback: ghcr.io/uberdudepl/windrose-dedicated-server-docker:staging
 Debug tools: ghcr.io/uberdudepl/windrose-dedicated-server-docker:debug
@@ -152,7 +152,7 @@ Set the image version in `.env` with:
 
 ```dotenv
 IMAGE_REPOSITORY=ghcr.io/uberdudepl/windrose-dedicated-server-docker
-IMAGE_TAG=v1.3.2
+IMAGE_TAG=v1.3.3
 ```
 
 ### Optional: development mode
@@ -293,7 +293,7 @@ MULTIHOME=0.0.0.0
 | `CONTAINER_NAME` | `windrose` | Change only if you run more than one server on the same host |
 | `HOSTNAME` | `localhost` | Internal container hostname used by ICE candidate discovery; keep `localhost` unless custom name resolves inside container |
 | `IMAGE_REPOSITORY` | GHCR repo | Published image repository |
-| `IMAGE_TAG` | `v1.3.2` | Stable image tag to run |
+| `IMAGE_TAG` | `v1.3.3` | Stable image tag to run |
 | `PUID` | `1000` | User id used for mounted files |
 | `PGID` | `1000` | Group id used for mounted files |
 | `UPDATE_ON_START` | `true` | Update and validate server files on startup |
@@ -382,14 +382,35 @@ The server still binds internal game and query ports, mainly for local binding a
 ## Useful commands
 
 ```bash
+# First-time interactive setup (.env, backup options, optional auto-start)
+./windrose setup
+
 # Start
 docker compose up -d
 
 # Stop
 docker compose stop
 
+# Restart helper flow
+./windrose restart
+
+# Helper status overview
+./windrose status
+
+# JSON snapshot for monitoring integrations
+./windrose status-json
+
 # View live logs
 docker compose logs -f windrose
+
+# Helper log shortcut
+./windrose logs
+
+# Best-effort player activity lines from recent logs
+./windrose activity history
+
+# Structured join/leave events (JSONL)
+./windrose activity events
 
 # List worlds
 ./windrose worlds
@@ -400,29 +421,35 @@ docker compose logs -f windrose
 # Switch to another world interactively
 ./windrose switch
 
+# Start or inspect activity notifications
+./windrose notify
+./windrose notify status
+./windrose notify test
+
+# Create a backup or install the backup cron helper
+./windrose backup
+./windrose install-backup-cron
+
+# Pull the latest published image tag
+./windrose pull
+
 # Update helper flow (safe pull -> up; use --force-down for full recreate)
 ./windrose update
-
-# First-time interactive setup (.env, backup options, optional auto-start)
-./windrose setup
 
 # Show detailed update log (default: last 120 lines)
 ./windrose update-log
 
-# JSON snapshot for monitoring integrations
-./windrose status-json
-
-# Best-effort player activity lines from recent logs
-./windrose activity history
-
-# Structured join/leave events (JSONL)
-./windrose activity events
+# Stop and remove the stack
+./windrose down
 
 # Check server process inside container
 docker compose exec windrose pgrep -a WindroseServer
 
 # Container status + health
 docker compose ps
+
+# Optional system-wide install target
+./windrose install /usr/local/bin/windrosectl
 ```
 
 ## Optional helper launcher
@@ -432,23 +459,28 @@ For easier day-to-day use, this repo also includes a small helper launcher.
 ```bash
 chmod +x ./windrose ./serverctl.sh
 
+./windrose setup
 ./windrose start
 ./windrose stop
 ./windrose restart
 ./windrose status
-./windrose logs
-./windrose worlds
-./windrose worlds-check
-./windrose update
 ./windrose status-json
+./windrose logs
 ./windrose activity history
 ./windrose activity events
+./windrose worlds
+./windrose worlds-check
+./windrose switch
 ./windrose notify
 ./windrose notify status
 ./windrose notify test
 ./windrose backup
 ./windrose install-backup-cron
-./windrose setup
+./windrose pull
+./windrose update
+./windrose update-log
+./windrose down
+./windrose install /usr/local/bin/windrosectl
 ```
 
 Optional system-wide install:
@@ -493,7 +525,7 @@ Legacy aliases are still supported for backward compatibility: `./windrose playe
 
 ---
 
-## Activity notifications: Discord or Gotify
+## Activity notifications: Discord, Gotify, or both
 
 A basic log watcher is included for best-effort player activity notifications.
 
@@ -507,7 +539,12 @@ GOTIFY_TOKEN=your_app_token
 GOTIFY_PRIORITY=5
 ```
 
-If `NOTIFY_PROVIDER=auto`, the script prefers Gotify when it is configured, otherwise it falls back to Discord.
+Provider modes:
+
+- `auto`: prefers Gotify when it is configured, otherwise falls back to Discord
+- `discord`: sends only to Discord
+- `gotify`: sends only to Gotify
+- `both`: sends to Discord and Gotify for every event
 
 1. Test the webhook once before long-term use:
 
@@ -769,7 +806,7 @@ For this repository default (`network_mode: host`), this specific bridge-NAT iss
 
 ## Image versions
 
-- Most users should keep `IMAGE_TAG=v1.3.2` for a stable server.
+- Most users should keep `IMAGE_TAG=v1.3.3` for a stable server.
 - Use `latest` only for testing.
 - Use `staging` only as a fallback for Wine compatibility issues on a specific host.
 - Use `debug` when you need extra troubleshooting tools inside the image.
@@ -834,7 +871,7 @@ Use `./windrose update-log [lines]` to quickly inspect recent update details fro
 
 ### What is the difference between stable and latest?
 
-Use a pinned version tag such as `v1.3.2` for production stability. Use `latest` only when you want the newest changes for testing.
+Use a pinned version tag such as `v1.3.3` for production stability. Use `latest` only when you want the newest changes for testing.
 
 ### When should I try `staging` or `debug`?
 

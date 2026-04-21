@@ -50,6 +50,10 @@ log_error() {
     echo -e "${_COLOR_RED}[windrose]${_COLOR_RESET} $*"
 }
 
+prompt_text() {
+    printf '%b' "${_COLOR_YELLOW}[windrose]${_COLOR_RESET} $1"
+}
+
 log_step() {
     echo -ne "${_COLOR_CYAN}[windrose]${_COLOR_RESET} $1..."
 }
@@ -615,7 +619,7 @@ switch_world() {
     echo -e "  ${_COLOR_CYAN}N)${_COLOR_RESET} Create a new world"
     echo -e "  ${_COLOR_CYAN}Q)${_COLOR_RESET} Cancel"
     echo
-    read -r -p "Select a world: " choice
+    read -r -p "$(prompt_text "Select a world: ")" choice
 
     case "$choice" in
         [Qq])
@@ -630,7 +634,7 @@ switch_world() {
                 log_warn "Current shell locale is not UTF-8. Non-ASCII world names may display incorrectly."
                 log_warn "Consider: export LANG=C.UTF-8"
             fi
-            read -r -p "New world name (optional): " new_world_name
+            read -r -p "$(prompt_text "New world name (optional): ")" new_world_name
             if [[ -n "$new_world_name" ]]; then
                 write_pending_world_name "$version" "$selected_id" "$new_world_name"
             fi
@@ -1330,6 +1334,8 @@ run_notifier() {
     local notify_pid_file="$SCRIPT_DIR/backups/notify.pid"
     local notify_log_file="$SCRIPT_DIR/backups/notify.log"
     local notify_pid=""
+    local -a notifier_pids=()
+    local pid
 
     if [[ -f "$notify_pid_file" ]]; then
         notify_pid="$(head -n 1 "$notify_pid_file" 2>/dev/null || true)"
@@ -1359,31 +1365,62 @@ run_notifier() {
 
     if [[ -n "$notify_pid" ]]; then
         echo "[windrose] Activity notifier is already running in background (PID $notify_pid)."
-        echo "[windrose] Stop it now? [y/N]"
-        read -r choice
+        read -r -p "$(prompt_text "Stop it now? ${_COLOR_YELLOW}[y/N]${_COLOR_RESET}: ")" choice
 
         case "${choice,,}" in
             y|yes)
-                log_step "Stopping activity notifier"
-                if ! kill "$notify_pid" >/dev/null 2>&1; then
-                    log_step_failed
-                    log_error "Failed to stop notifier process (PID $notify_pid)."
-                    exit 1
+                if [[ -n "$notify_pid" ]]; then
+                    notifier_pids+=("$notify_pid")
                 fi
 
+                while IFS= read -r pid; do
+                    [[ -z "$pid" ]] && continue
+                    if [[ " ${notifier_pids[*]} " != *" $pid "* ]]; then
+                        notifier_pids+=("$pid")
+                    fi
+                done < <(pgrep -f "$SCRIPT_DIR/notify.sh" || true)
+
+                if [[ "${#notifier_pids[@]}" -eq 0 ]]; then
+                    rm -f "$notify_pid_file"
+                    log_warn "Notifier process is no longer running."
+                    return 0
+                fi
+
+                log_step "Stopping activity notifier"
+                for pid in "${notifier_pids[@]}"; do
+                    kill "$pid" >/dev/null 2>&1 || true
+                done
+
                 for _ in $(seq 1 20); do
-                    if ! kill -0 "$notify_pid" >/dev/null 2>&1; then
+                    local still_running=false
+
+                    for pid in "${notifier_pids[@]}"; do
+                        if kill -0 "$pid" >/dev/null 2>&1; then
+                            still_running=true
+                            break
+                        fi
+                    done
+
+                    if [[ "$still_running" == "false" ]]; then
                         break
+                    fi
+
+                    sleep 0.1
+                done
+
+                for pid in "${notifier_pids[@]}"; do
+                    if kill -0 "$pid" >/dev/null 2>&1; then
+                        kill -9 "$pid" >/dev/null 2>&1 || true
                     fi
                 done
 
-                if kill -0 "$notify_pid" >/dev/null 2>&1; then
-                    if ! kill -9 "$notify_pid" >/dev/null 2>&1; then
+                for pid in "${notifier_pids[@]}"; do
+                    if kill -0 "$pid" >/dev/null 2>&1; then
                         log_step_failed
-                        log_error "Notifier did not stop cleanly and could not be force-stopped."
+                        log_error "Notifier did not stop cleanly (PID $pid)."
                         exit 1
                     fi
-                fi
+                done
 
                 rm -f "$notify_pid_file"
                 log_step_done
@@ -1397,8 +1434,7 @@ run_notifier() {
         esac
     fi
 
-    echo "[windrose] Run activity notifier in background? [y/N]"
-    read -r choice
+    read -r -p "$(prompt_text "Run activity notifier in background? ${_COLOR_YELLOW}[y/N]${_COLOR_RESET}: ")" choice
 
     case "${choice,,}" in
         y|yes)
@@ -1800,7 +1836,7 @@ setup_server() {
     echo
 
     local start_after_choice start_after="no"
-    read -r -p "Start the server automatically after setup? [Y/n]: " start_after_choice
+    read -r -p "$(prompt_text "Start the server automatically after setup? ${_COLOR_YELLOW}[Y/n]${_COLOR_RESET}: ")" start_after_choice
     case "${start_after_choice,,}" in
         ""|y|yes) start_after="yes" ;;
         *) start_after="no" ;;
@@ -1814,11 +1850,11 @@ setup_server() {
     local backup_discord_choice backup_discord_upload="no"
     local discord_url=""
 
-    read -r -p "Server name [My Windrose Server]: " server_name
+    read -r -p "$(prompt_text "Server name [My Windrose Server]: ")" server_name
     server_name="${server_name:-My Windrose Server}"
 
     log_info "Leave invite code empty to let the server generate it automatically on first successful start."
-    read -r -p "Invite code (optional, alphanumeric, min 6 chars): " invite_code
+    read -r -p "$(prompt_text "Invite code (optional, alphanumeric, min 6 chars): ")" invite_code
     if [[ -n "$invite_code" ]] && [[ ! "$invite_code" =~ ^[A-Za-z0-9]{6,}$ ]]; then
         log_error "Invalid invite code. Use only letters and numbers, at least 6 characters."
         exit 1
@@ -1827,16 +1863,16 @@ setup_server() {
         invite_code_mode="auto"
     fi
 
-    read -r -p "Server password (leave empty for none): " server_password
+    read -r -p "$(prompt_text "Server password (leave empty for none): ")" server_password
 
-    read -r -p "Max players [4]: " max_players
+    read -r -p "$(prompt_text "Max players [4]: ")" max_players
     max_players="${max_players:-4}"
     if [[ ! "$max_players" =~ ^[0-9]+$ ]] || [[ "$max_players" -le 0 ]]; then
         log_error "Invalid max players value: $max_players"
         exit 1
     fi
 
-    read -r -p "Enable automatic backup cron job? [y/N]: " enable_auto_backup_choice
+    read -r -p "$(prompt_text "Enable automatic backup cron job? ${_COLOR_YELLOW}[y/N]${_COLOR_RESET}: ")" enable_auto_backup_choice
     case "${enable_auto_backup_choice,,}" in
         y|yes) enable_auto_backup="yes" ;;
         *) enable_auto_backup="no" ;;
@@ -1844,25 +1880,25 @@ setup_server() {
 
     if [[ "$enable_auto_backup" == "yes" ]]; then
         log_info "Default backup schedule is daily at 06:00 (cron: 0 6 * * *)."
-        read -r -p "Backup cron schedule [0 6 * * *]: " backup_schedule
+        read -r -p "$(prompt_text "Backup cron schedule [0 6 * * *]: ")" backup_schedule
         backup_schedule="${backup_schedule:-0 6 * * *}"
     fi
 
-    read -r -p "Backup format [tar.gz/zip] (default: tar.gz): " backup_format
+    read -r -p "$(prompt_text "Backup format [tar.gz/zip] (default: tar.gz): ")" backup_format
     backup_format="${backup_format:-tar.gz}"
     if [[ "$backup_format" != "tar.gz" && "$backup_format" != "zip" ]]; then
         log_error "Invalid backup format: $backup_format (allowed: tar.gz, zip)"
         exit 1
     fi
 
-    read -r -p "Backup scope [full/save/both] (default: full): " backup_scope
+    read -r -p "$(prompt_text "Backup scope [full/save/both] (default: full): ")" backup_scope
     backup_scope="${backup_scope:-full}"
     if [[ "$backup_scope" != "full" && "$backup_scope" != "save" && "$backup_scope" != "both" ]]; then
         log_error "Invalid backup scope: $backup_scope (allowed: full, save, both)"
         exit 1
     fi
 
-    read -r -p "Upload save backup file to Discord webhook? [y/N]: " backup_discord_choice
+    read -r -p "$(prompt_text "Upload save backup file to Discord webhook? ${_COLOR_YELLOW}[y/N]${_COLOR_RESET}: ")" backup_discord_choice
     case "${backup_discord_choice,,}" in
         y|yes) backup_discord_upload="yes" ;;
         *) backup_discord_upload="no" ;;
@@ -1873,7 +1909,7 @@ setup_server() {
             log_warn "Discord upload works only for save backups. Changing BACKUP_SCOPE from full to both."
             backup_scope="both"
         fi
-        read -r -p "Discord webhook URL (required for upload): " discord_url
+        read -r -p "$(prompt_text "Discord webhook URL (required for upload): ")" discord_url
         if [[ -z "$discord_url" ]]; then
             log_error "Discord webhook URL is required when Discord backup upload is enabled."
             exit 1
