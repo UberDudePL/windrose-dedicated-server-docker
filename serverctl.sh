@@ -170,6 +170,7 @@ usage() {
 Windrose helper script
 
 Usage:
+  $SELF_NAME setup
   $SELF_NAME start
   $SELF_NAME stop
   $SELF_NAME restart
@@ -941,7 +942,7 @@ upload_backup_to_discord() {
 }
 
 install_backup_cron() {
-    local schedule="${1:-0 */6 * * *}"
+    local schedule="${1:-0 6 * * *}"
     local backup_cmd="$SCRIPT_DIR/windrose backup"
     local backup_log_dir="$SCRIPT_DIR/backups"
     local backup_log_file="$backup_log_dir/backup.log"
@@ -1084,6 +1085,316 @@ update_server() {
     append_update_log "Update finished successfully"
 }
 
+_set_env_value() {
+    local key="$1"
+    local value="$2"
+    local env_file="$3"
+    local escaped
+    escaped="${value//\\/\\\\}"
+    escaped="${escaped//|/\\|}"
+    escaped="${escaped//&/\\&}"
+    sed -i "s|^${key}=.*|${key}=${escaped}|" "$env_file"
+}
+
+port_is_in_use() {
+    local port="$1"
+
+    if ! command -v ss >/dev/null 2>&1; then
+        return 1
+    fi
+
+    ss -H -lntu 2>/dev/null | awk '{print $5}' | grep -E "(^|[:\]])${port}$" >/dev/null 2>&1
+}
+
+run_setup_host_precheck() {
+    local min_ram_mb=8192
+    local rec_ram_mb=16384
+    local min_disk_mb=8192
+    local total_ram_mb=0
+    local free_disk_mb=0
+    local disk_mount="unknown"
+
+    log_step "Running host precheck (docker/compose/resources)"
+
+    if ! command -v docker >/dev/null 2>&1; then
+        log_step_failed
+        log_error "Docker is not installed or not in PATH. Install Docker 24+ and retry."
+        exit 1
+    fi
+
+    if ! "${DOCKER_CMD[@]}" compose version >/dev/null 2>&1; then
+        log_step_failed
+        log_error "Docker Compose v2 is not available. Install the docker compose plugin and retry."
+        exit 1
+    fi
+
+    if [[ -r /proc/meminfo ]]; then
+        total_ram_mb="$(awk '/^MemTotal:/ {printf "%d", $2/1024}' /proc/meminfo)"
+    fi
+
+    if ! [[ "$total_ram_mb" =~ ^[0-9]+$ ]] || [[ "$total_ram_mb" -le 0 ]]; then
+        log_step_failed
+        log_error "Unable to detect host RAM. Check /proc/meminfo and retry."
+        exit 1
+    fi
+
+    read -r free_disk_mb disk_mount < <(df -Pm "$SCRIPT_DIR" | awk 'NR==2 {print $4, $6}')
+    if ! [[ "$free_disk_mb" =~ ^[0-9]+$ ]] || [[ "$free_disk_mb" -le 0 ]]; then
+        log_step_failed
+        log_error "Unable to detect free disk space for $SCRIPT_DIR."
+        exit 1
+    fi
+
+    if [[ "$total_ram_mb" -lt "$min_ram_mb" ]]; then
+        log_step_failed
+        log_error "Detected RAM: ${total_ram_mb} MB. Minimum required is ${min_ram_mb} MB."
+        exit 1
+    fi
+
+    if [[ "$free_disk_mb" -lt "$min_disk_mb" ]]; then
+        log_step_failed
+        log_error "Free disk on ${disk_mount}: ${free_disk_mb} MB. Minimum required is ${min_disk_mb} MB."
+        exit 1
+    fi
+
+    log_step_done
+    log_info "Host resources: RAM=${total_ram_mb} MB, free disk on ${disk_mount}=${free_disk_mb} MB"
+
+    if [[ "$total_ram_mb" -lt "$rec_ram_mb" ]]; then
+        log_warn "RAM below recommended ${rec_ram_mb} MB. 4-player sessions may be unstable under load."
+    fi
+}
+
+setup_server() {
+    local env_file="$SCRIPT_DIR/.env"
+    local env_example="$SCRIPT_DIR/.env.example"
+
+    if [[ -f "$env_file" ]]; then
+        log_error ".env already exists at $env_file"
+        log_info "Setup is a one-off operation. Edit .env directly to change the configuration."
+        exit 1
+    fi
+
+    if [[ ! -f "$env_example" ]]; then
+        log_error ".env.example not found at $env_example"
+        exit 1
+    fi
+
+    run_setup_host_precheck
+
+    log_info "Windrose first-time setup"
+    echo
+
+    local start_after_choice start_after="no"
+    read -r -p "Start the server automatically after setup? [Y/n]: " start_after_choice
+    case "${start_after_choice,,}" in
+        ""|y|yes) start_after="yes" ;;
+        *) start_after="no" ;;
+    esac
+    echo
+
+    local server_name invite_code server_password max_players
+    local invite_code_mode="manual"
+    local enable_auto_backup_choice enable_auto_backup="no"
+    local backup_schedule backup_format backup_scope
+    local backup_discord_choice backup_discord_upload="no"
+    local discord_url=""
+
+    read -r -p "Server name [My Windrose Server]: " server_name
+    server_name="${server_name:-My Windrose Server}"
+
+    log_info "Leave invite code empty to let the server generate it automatically on first successful start."
+    read -r -p "Invite code (optional, alphanumeric, min 6 chars): " invite_code
+    if [[ -n "$invite_code" ]] && [[ ! "$invite_code" =~ ^[A-Za-z0-9]{6,}$ ]]; then
+        log_error "Invalid invite code. Use only letters and numbers, at least 6 characters."
+        exit 1
+    fi
+    if [[ -z "$invite_code" ]]; then
+        invite_code_mode="auto"
+    fi
+
+    read -r -p "Server password (leave empty for none): " server_password
+
+    read -r -p "Max players [4]: " max_players
+    max_players="${max_players:-4}"
+    if [[ ! "$max_players" =~ ^[0-9]+$ ]] || [[ "$max_players" -le 0 ]]; then
+        log_error "Invalid max players value: $max_players"
+        exit 1
+    fi
+
+    read -r -p "Enable automatic backup cron job? [y/N]: " enable_auto_backup_choice
+    case "${enable_auto_backup_choice,,}" in
+        y|yes) enable_auto_backup="yes" ;;
+        *) enable_auto_backup="no" ;;
+    esac
+
+    if [[ "$enable_auto_backup" == "yes" ]]; then
+        log_info "Default backup schedule is daily at 06:00 (cron: 0 6 * * *)."
+        read -r -p "Backup cron schedule [0 6 * * *]: " backup_schedule
+        backup_schedule="${backup_schedule:-0 6 * * *}"
+    fi
+
+    read -r -p "Backup format [tar.gz/zip] (default: tar.gz): " backup_format
+    backup_format="${backup_format:-tar.gz}"
+    if [[ "$backup_format" != "tar.gz" && "$backup_format" != "zip" ]]; then
+        log_error "Invalid backup format: $backup_format (allowed: tar.gz, zip)"
+        exit 1
+    fi
+
+    read -r -p "Backup scope [full/save/both] (default: full): " backup_scope
+    backup_scope="${backup_scope:-full}"
+    if [[ "$backup_scope" != "full" && "$backup_scope" != "save" && "$backup_scope" != "both" ]]; then
+        log_error "Invalid backup scope: $backup_scope (allowed: full, save, both)"
+        exit 1
+    fi
+
+    read -r -p "Upload save backup file to Discord webhook? [y/N]: " backup_discord_choice
+    case "${backup_discord_choice,,}" in
+        y|yes) backup_discord_upload="yes" ;;
+        *) backup_discord_upload="no" ;;
+    esac
+
+    if [[ "$backup_discord_upload" == "yes" ]]; then
+        if [[ "$backup_scope" == "full" ]]; then
+            log_warn "Discord upload works only for save backups. Changing BACKUP_SCOPE from full to both."
+            backup_scope="both"
+        fi
+        read -r -p "Discord webhook URL (required for upload): " discord_url
+        if [[ -z "$discord_url" ]]; then
+            log_error "Discord webhook URL is required when Discord backup upload is enabled."
+            exit 1
+        fi
+    fi
+
+    echo
+
+    local detected_puid detected_pgid
+    detected_puid="$(id -u)"
+    detected_pgid="$(id -g)"
+
+    log_step "Creating .env from template"
+    cp "$env_example" "$env_file"
+    log_step_done
+
+    _set_env_value "SERVER_NAME"        "$server_name"    "$env_file"
+    _set_env_value "INVITE_CODE"        "$invite_code"    "$env_file"
+    _set_env_value "SERVER_PASSWORD"    "$server_password" "$env_file"
+    _set_env_value "MAX_PLAYERS"        "$max_players"    "$env_file"
+    _set_env_value "PUID"               "$detected_puid"  "$env_file"
+    _set_env_value "PGID"               "$detected_pgid"  "$env_file"
+    _set_env_value "BACKUP_FORMAT"      "$backup_format"   "$env_file"
+    _set_env_value "BACKUP_SCOPE"       "$backup_scope"    "$env_file"
+    if [[ "$backup_discord_upload" == "yes" ]]; then
+        _set_env_value "BACKUP_DISCORD_UPLOAD" "true" "$env_file"
+    else
+        _set_env_value "BACKUP_DISCORD_UPLOAD" "false" "$env_file"
+    fi
+    if [[ -n "$discord_url" ]]; then
+        _set_env_value "DISCORD_WEBHOOK_URL" "$discord_url" "$env_file"
+    fi
+
+    log_ok "Configuration written to $env_file"
+    echo
+    log_info "Summary:"
+    echo -e "  ${_COLOR_CYAN}Server name:${_COLOR_RESET}   $server_name"
+    echo -e "  ${_COLOR_CYAN}Invite code:${_COLOR_RESET}   ${invite_code:-(auto/empty)}"
+    echo -e "  ${_COLOR_CYAN}Password:${_COLOR_RESET}      ${server_password:-(none)}"
+    echo -e "  ${_COLOR_CYAN}Max players:${_COLOR_RESET}   $max_players"
+    echo -e "  ${_COLOR_CYAN}PUID/PGID:${_COLOR_RESET}     $detected_puid/$detected_pgid"
+    echo -e "  ${_COLOR_CYAN}Backup format:${_COLOR_RESET} $backup_format"
+    echo -e "  ${_COLOR_CYAN}Backup scope:${_COLOR_RESET}  $backup_scope"
+    if [[ "$enable_auto_backup" == "yes" ]]; then
+        echo -e "  ${_COLOR_CYAN}Backup cron:${_COLOR_RESET}   $backup_schedule"
+    else
+        echo -e "  ${_COLOR_CYAN}Backup cron:${_COLOR_RESET}   disabled"
+    fi
+    if [[ "$backup_discord_upload" == "yes" ]]; then
+        echo -e "  ${_COLOR_CYAN}Discord upload:${_COLOR_RESET} enabled"
+    else
+        echo -e "  ${_COLOR_CYAN}Discord upload:${_COLOR_RESET} disabled"
+    fi
+    echo
+
+    if [[ "$enable_auto_backup" == "yes" ]]; then
+        if command -v crontab >/dev/null 2>&1; then
+            install_backup_cron "$backup_schedule"
+        else
+            log_warn "crontab is not available on this host. Skipping automatic backup schedule setup."
+        fi
+    fi
+
+    if [[ "$start_after" == "yes" ]]; then
+        local game_port query_port
+        local generated_invite_code=""
+        game_port="$(dotenv_value PORT || true)"
+        query_port="$(dotenv_value QUERYPORT || true)"
+
+        log_step "Running startup preflight checks"
+        if ! dc config -q >/dev/null 2>&1; then
+            log_step_failed
+            log_error "Docker Compose configuration is invalid. Fix compose/.env values and retry."
+            exit 1
+        fi
+        log_step_done
+
+        if [[ -n "$game_port" ]] && port_is_in_use "$game_port"; then
+            log_warn "Port $game_port is already in use on the host (PORT). Startup may fail."
+        fi
+
+        if [[ -n "$query_port" ]] && port_is_in_use "$query_port"; then
+            log_warn "Port $query_port is already in use on the host (QUERYPORT). Startup may fail."
+        fi
+
+        log_info "If LAN clients fail to connect while WAN works, see README: 'Troubleshooting -> LAN clients fail, WAN clients work'."
+
+        log_step "Pulling image"
+        if ! dc pull; then
+            log_step_failed
+            log_error "Failed to pull image. Check IMAGE_TAG in $env_file and try again."
+            exit 1
+        fi
+        log_step_done
+
+        log_step "Starting server"
+        if ! dc up -d >/dev/null 2>&1; then
+            log_step_failed
+            log_error "Failed to start server."
+            exit 1
+        fi
+        log_step_done
+        log_ok "Server is starting. Check status with: ./$SELF_NAME status"
+        log_info "Follow logs with: ./$SELF_NAME logs"
+
+        if [[ "$invite_code_mode" == "auto" ]]; then
+            if command -v jq >/dev/null 2>&1; then
+                log_info "Invite code was left empty, waiting for automatic generation..."
+                for _ in $(seq 1 90); do
+                    generated_invite_code="$(jq -r '.ServerDescription_Persistent.InviteCode // .InviteCode // empty' "$SERVER_DESC_FILE" 2>/dev/null || true)"
+                    if [[ -n "$generated_invite_code" && "$generated_invite_code" != "null" ]]; then
+                        break
+                    fi
+                    sleep 1
+                done
+
+                if [[ -n "$generated_invite_code" && "$generated_invite_code" != "null" ]]; then
+                    log_ok "Generated invite code: $generated_invite_code"
+                else
+                    log_warn "Invite code was not detected yet. Check $SERVER_DESC_FILE after the server finishes booting."
+                fi
+            else
+                log_info "Invite code was left empty. It will be generated automatically."
+                log_info "Check it in: $SERVER_DESC_FILE"
+            fi
+        fi
+    else
+        log_info "Start the server when ready: ./$SELF_NAME start"
+        if [[ "$invite_code_mode" == "auto" ]]; then
+            log_info "Invite code was left empty and will be generated on first successful start."
+            log_info "After startup, check it in: $SERVER_DESC_FILE"
+        fi
+    fi
+}
+
 down_server() {
     log_step "Stopping and removing the stack"
     if ! dc down; then
@@ -1126,6 +1437,9 @@ init_docker_cmd
 require_tools
 
 case "${1:-help}" in
+    setup)
+        setup_server
+        ;;
     start)
         start_server
         ;;

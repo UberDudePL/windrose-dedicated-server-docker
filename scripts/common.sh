@@ -106,6 +106,7 @@ dump_wine_diagnostics() {
   fi
 
   if [[ -d "$WINEPREFIX" ]]; then
-    ls -la "$WINEPREFIX" | head -n 10 | print_prefixed_lines "  "
+    find "$WINEPREFIX" -mindepth 1 -maxdepth 1 \
+      -printf '%M %n %u %g %10s %TY-%Tm-%Td %TH:%TM %f\n' | head -n 10 | print_prefixed_lines "  "
   fi
 }

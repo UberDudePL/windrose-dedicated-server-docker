@@ -10,6 +10,7 @@ Self-hosted dedicated server for [Windrose](https://store.steampowered.com/app/2
 
 - [Features](#features)
 - [Requirements](#requirements)
+- [First-time setup (recommended)](#first-time-setup-recommended)
 - [Quick start](#quick-start)
 - [Configuration](#configuration)
 - [Volumes](#volumes)
@@ -59,9 +60,63 @@ Self-hosted dedicated server for [Windrose](https://store.steampowered.com/app/2
 
 ---
 
+## First-time setup (recommended)
+
+If this is your first run, use the interactive helper first. It creates `.env`, asks for key settings, optionally configures backup cron, and can start the server immediately.
+
+```bash
+# 1. Clone and enter the repository
+git clone https://github.com/UberDudePL/windrose-dedicated-server-docker.git
+cd windrose-dedicated-server-docker
+
+# 2. Make helper scripts executable
+chmod +x ./windrose ./serverctl.sh
+
+# 3. Run interactive setup
+./windrose setup
+```
+
+What `./windrose setup` asks:
+
+1. Start automatically after setup (`Y/n`)
+2. Server name
+3. Invite code (optional, alphanumeric, minimum 6 chars)
+4. Optional server password
+5. Max players
+6. Enable automatic backup cron (`y/N`)
+7. Backup cron schedule (default: `0 6 * * *`, daily at 06:00)
+8. Backup format (`tar.gz` or `zip`)
+9. Backup scope (`full`, `save`, `both`)
+10. Discord upload for save backups (`y/N`)
+11. Discord webhook URL (only if upload is enabled)
+
+If invite code is left empty, the server generates it automatically on first successful start.
+When setup starts the server automatically, it tries to show the generated code.
+When setup does not start the server, check the generated code later in `data/R5/ServerDescription.json`.
+
+Behavior and safety notes:
+
+- Setup is one-off by design: if `.env` already exists, setup exits with a clear message.
+- Setup runs a host precheck before questions: Docker in PATH, Docker Compose v2, RAM >= 8 GB, free disk >= 8 GB.
+- `PUID` and `PGID` are auto-detected from the current host user.
+- If backup upload is enabled and scope is `full`, scope is adjusted to `both`.
+- If `crontab` is missing, setup continues and warns instead of failing.
+- Before auto-start, setup runs preflight checks (`docker compose config`) and warns if `PORT` or `QUERYPORT` are already in use.
+
+After setup, use:
+
+```bash
+./windrose status
+./windrose logs
+```
+
+---
+
 ## Quick start
 
 Production mode uses the published GHCR image by default. Most users only need this mode and can ignore the development override file.
+
+If this is your first run, prefer [First-time setup (recommended)](#first-time-setup-recommended).
 
 ```bash
 # 1. Clone the repository
@@ -139,28 +194,28 @@ Use these commands when you want to verify all image variants locally before pus
 ```bash
 # stable
 docker build \
-	--build-arg WINE_FLAVOR=stable \
-	--build-arg ENABLE_WINETRICKS=false \
-	--build-arg INSTALL_DEBUG_TOOLS=false \
-	--build-arg DEFAULT_WINEDEBUG=-all \
-	-t windrose-smoke:stable .
+   --build-arg WINE_FLAVOR=stable \
+   --build-arg ENABLE_WINETRICKS=false \
+   --build-arg INSTALL_DEBUG_TOOLS=false \
+   --build-arg DEFAULT_WINEDEBUG=-all \
+   -t windrose-smoke:stable .
 
 # staging
 docker build \
-	--build-arg WINE_FLAVOR=staging \
-	--build-arg ENABLE_WINETRICKS=true \
-	--build-arg WINETRICKS_PACKAGES='win10 vcrun2022' \
-	--build-arg INSTALL_DEBUG_TOOLS=false \
-	--build-arg DEFAULT_WINEDEBUG=-all \
-	-t windrose-smoke:staging .
+   --build-arg WINE_FLAVOR=staging \
+   --build-arg ENABLE_WINETRICKS=true \
+   --build-arg WINETRICKS_PACKAGES='win10 vcrun2022' \
+   --build-arg INSTALL_DEBUG_TOOLS=false \
+   --build-arg DEFAULT_WINEDEBUG=-all \
+   -t windrose-smoke:staging .
 
 # debug
 docker build \
-	--build-arg WINE_FLAVOR=stable \
-	--build-arg ENABLE_WINETRICKS=false \
-	--build-arg INSTALL_DEBUG_TOOLS=true \
-	--build-arg DEFAULT_WINEDEBUG='warn+timestamp' \
-	-t windrose-smoke:debug .
+   --build-arg WINE_FLAVOR=stable \
+   --build-arg ENABLE_WINETRICKS=false \
+   --build-arg INSTALL_DEBUG_TOOLS=true \
+   --build-arg DEFAULT_WINEDEBUG='warn+timestamp' \
+   -t windrose-smoke:debug .
 ```
 
 ---
@@ -320,8 +375,11 @@ docker compose logs -f windrose
 # Switch to another world interactively
 ./windrose switch
 
-# Update helper flow (down -> pull with progress -> up)
+# Update helper flow (safe pull -> up; use --force-down for full recreate)
 ./windrose update
+
+# First-time interactive setup (.env, backup options, optional auto-start)
+./windrose setup
 
 # Show detailed update log (default: last 120 lines)
 ./windrose update-log
@@ -352,6 +410,7 @@ chmod +x ./windrose ./serverctl.sh
 ./windrose test-notify
 ./windrose backup
 ./windrose install-backup-cron
+./windrose setup
 ```
 
 Optional system-wide install:
@@ -377,7 +436,7 @@ Use these commands for a fast operational check:
 ./windrose worlds-check
 
 # 3) Recent critical network/auth errors from current log file
-tail -400 ./chat | grep -Ei "account verification failed|turn session was expired|p2pgate disconnected|server authorization failed|login finished with error"
+docker compose logs --no-color --tail 400 windrose | grep -Ei "account verification failed|turn session was expired|p2pgate disconnected|server authorization failed|login finished with error"
 ```
 
 If command `3` returns lines repeatedly, check outbound connectivity and firewall/NAT behavior for `*.windrose.support` on UDP/TCP `3478`.
@@ -400,13 +459,13 @@ GOTIFY_PRIORITY=5
 
 If `NOTIFY_PROVIDER=auto`, the script prefers Gotify when it is configured, otherwise it falls back to Discord.
 
-2. Test the webhook once before long-term use:
+1. Test the webhook once before long-term use:
 
 ```bash
 ./windrose test-notify
 ```
 
-3. Start the watcher:
+1. Start the watcher:
 
 ```bash
 ./windrose notify
@@ -428,7 +487,7 @@ At the moment this is log-based and best-effort. Disconnect events are easier to
 
 World saves live under:
 
-```
+```text
 data/R5/Saved/SaveProfiles/Default/RocksDB/<game-version>/Worlds/
 ```
 
@@ -439,6 +498,7 @@ Each world is a folder named with its world ID (for example `EC10598E83A14ED04D9
 ⚠ Always back up your saves first. Also shut down both the dedicated server and the game client before copying files.
 
 1. **Stop the dedicated server**:
+
    ```bash
    ./windrose stop
    ```
@@ -450,26 +510,35 @@ Each world is a folder named with its world ID (for example `EC10598E83A14ED04D9
    - Example: `C:\Users\YarrHarrPirate\AppData\Local\R5\Saved\SaveProfiles\76561199699067790\RocksDB\0.8.0\Worlds\EC10598E83A14ED04D9C44CBFBF3F4B1`
 
 3. **Copy the entire world folder** to the dedicated server data directory, preserving the folder name exactly:
-   ```
+
+   ```text
    data/R5/Saved/SaveProfiles/Default/RocksDB/<game-version>/Worlds/
    ```
+
    Example using `scp` from a local machine (copy folder as-is):
+
    ```bash
    scp -r "./EC10598E83A14ED04D9C44CBFBF3F4B1" user@yourserver:/windrose/data/R5/Saved/SaveProfiles/Default/RocksDB/<version>/Worlds/
    ```
 
+   Use the copied folder name exactly. Do not rename world folders.
+
 4. **Set the world ID** in `data/R5/ServerDescription.json`:
+
    ```json
    "WorldIslandId": "EC10598E83A14ED04D9C44CBFBF3F4B1"
    ```
+
    Use the copied folder name exactly. Do not rename world folders.
 
 5. **Start the server:**
+
    ```bash
    ./windrose start
    ```
 
 6. **Verify** — check logs to confirm the correct world loaded:
+
    ```bash
    ./windrose logs
    ```
@@ -488,7 +557,7 @@ Use the built-in helper for a safer backup flow. It briefly stops the server, cr
 # Create a manual backup
 ./windrose backup
 
-# Install a host cron job running every 6 hours
+# Install a host cron job running daily at 06:00
 ./windrose install-backup-cron
 
 # Or provide your own schedule
@@ -504,6 +573,7 @@ BACKUP_SCOPE=full
 ```
 
 Supported values:
+
 - `full` (default): archive full `R5` directory
 - `save`: archive only save data (`R5/Saved` and `R5/ServerDescription.json` when present)
 - `both`: create both full and save archives in one run
@@ -515,6 +585,7 @@ BACKUP_FORMAT=tar.gz
 ```
 
 Supported values:
+
 - `tar.gz` (default)
 - `zip` (more convenient to open on Windows)
 
@@ -539,6 +610,7 @@ BACKUP_DISCORD_UPLOAD=false
 ```
 
 When set to `true`, Discord upload depends on `BACKUP_SCOPE`:
+
 - `save` or `both`: upload the newest `windrose-backup-save-*` archive (`.tar.gz` or `.zip`)
 - `full`: skip upload intentionally
 
@@ -548,7 +620,7 @@ Files larger than 25 MB are skipped with a warning (Discord free tier limit).
 
 ## Directory structure
 
-```
+```text
 windrose/
 ├── Dockerfile          # Ubuntu 22.04 + Wine + SteamCMD
 ├── docker-compose.yml  # Service definition
@@ -572,9 +644,69 @@ windrose/
 | `ERROR! Failed to install app` | Check SteamCMD logs and verify the app id and Steam login mode |
 | Server not visible to players | Share the `InviteCode` from `ServerDescription.json` |
 | Connection works on some networks but not others | The network or ISP may be blocking STUN/TURN traffic used by the game; check access to `*.windrose.support` on port `3478` over UDP/TCP |
+| Remote clients connect, LAN clients fail after ~10 seconds | See the LAN ICE note below; this is usually Docker bridge NAT + routing mismatch |
 | `Account verification failed`, `Turn session was expired`, `BL P2PGate disconnected` | Usually upstream TURN/P2P session/network issue; verify stable outbound access to `*.windrose.support` on UDP/TCP `3478`, avoid aggressive NAT/firewall timeouts, then retry reconnect |
 | Config reset after restart | Edit JSON only when container is stopped |
 | Players have issues after a game patch | Keep the dedicated server version updated to match the game version |
+
+### Client cannot connect (quick checklist)
+
+Use this first-line checklist before deeper debugging:
+
+1. Restart the game client and Steam.
+2. Restart the router and the client PC.
+3. Disable VPN/proxy on the client.
+4. Temporarily disable aggressive antivirus/firewall filtering.
+5. Retry joining 3-5 times.
+
+If the issue persists only on selected networks, continue with DNS and ISP checks below.
+
+### DNS check for game services
+
+Run these commands on the affected client machine:
+
+```bash
+nslookup r5coopapigateway-eu-release.windrose.support
+nslookup r5coopapigateway-eu-release.windrose.support 8.8.8.8
+```
+
+How to interpret results:
+
+- Expected: a normal IPv4 address is returned.
+- `Non-existent domain`: local DNS/ISP may be filtering the domain.
+- `Request timed out`: DNS resolver or local security tooling may be blocking requests.
+- `127.0.0.1`: local override, VPN, or ISP spoofing is likely.
+- IPv6-only answer: prefer IPv4 for this game flow.
+
+### ISP/network block playbook (3478 UDP/TCP)
+
+If failures repeat on one ISP/network, ask for a whitelist check with this template:
+
+- Domains: `*.windrose.support`
+- Port: `3478`
+- Protocols: `UDP`, `TCP`
+- Traffic type: `STUN/TURN` (NAT traversal)
+- Purpose: legitimate game connectivity
+
+Also test from a different network (for example mobile hotspot) to confirm whether the issue is network-specific.
+
+### LAN clients fail, WAN clients work
+
+If the server runs in Docker bridge mode on Linux and LAN clients are dropped after about 10 seconds, this is often an ICE/STUN consent issue caused by host NAT (MASQUERADE).
+
+Typical symptoms:
+
+- WAN clients connect, LAN clients fail
+- Server logs contain `Check consent was failed for IceControlling. Reach timeout 10000 ms`
+
+Practical checklist:
+
+1. Confirm whether you are on bridge networking (custom setups) vs host networking.
+2. On the Docker host, add a NAT bypass rule for traffic from container subnet to LAN subnet.
+3. On LAN clients, add a route back to the Docker subnet via the server host LAN IP.
+4. Re-test and confirm ICE consent succeeds in logs.
+
+For this repository default (`network_mode: host`), this specific bridge-NAT issue is usually not applicable.
 
 ---
 
@@ -664,9 +796,9 @@ If you hit a bug or want a new feature, please open an issue in the GitHub repos
 
 If this project saved you time and you want to support further maintenance, you can use:
 
-- Ko-fi: https://ko-fi.com/uberdudepl
-- PayPal: https://paypal.me/uberdudepl
-- Revolut: https://revolut.me/uberdudepl
+- Ko-fi: [https://ko-fi.com/uberdudepl](https://ko-fi.com/uberdudepl)
+- PayPal: [https://paypal.me/uberdudepl](https://paypal.me/uberdudepl)
+- Revolut: [https://revolut.me/uberdudepl](https://revolut.me/uberdudepl)
 
 ---
 
