@@ -1,0 +1,41 @@
+{"ts":"2026-04-21T15:16:41Z","type":"leave","player":"NULL:DESKTOP-8QKFDLO-9C9705DA4741E9325B39D2AC0D0836D2","reason":"leave_inferred_unet_close"}
+{"ts":"2026-04-21T15:29:08Z","type":"join","player":"NULL:DESKTOP-8QKFDLO-9C9705DA4741E9325B39D2AC0D0836D2","reason":"join_inferred_p2p"}
+{"ts":"2026-04-21T15:29:08Z","type":"leave","player":"NULL:DESKTOP-8QKFDLO-9C9705DA4741E9325B39D2AC0D0836D2","reason":"leave_inferred_unet_close"}
+{"ts":"2026-04-21T15:39:01Z","type":"join","player":"NULL:DESKTOP-8QKFDLO-9C9705DA4741E9325B39D2AC0D0836D2","reason":"join_inferred_p2p"}
+{"ts":"2026-04-21T15:39:01Z","type":"leave","player":"NULL:DESKTOP-8QKFDLO-9C9705DA4741E9325B39D2AC0D0836D2","reason":"leave_inferred_unet_close"}
+{"ts":"2026-04-21T15:39:01Z","type":"leave","player":"B0DBF6B04EC5B588390172B48162DE73","reason":"disconnectaccount"}
+{"ts":"2026-04-21T15:41:09Z","type":"join","player":"NULL:DESKTOP-8QKFDLO-9C9705DA4741E9325B39D2AC0D0836D2","reason":"join_inferred_p2p"}
+{"ts":"2026-04-21T15:41:09Z","type":"leave","player":"NULL:DESKTOP-8QKFDLO-9C9705DA4741E9325B39D2AC0D0836D2","reason":"leave_inferred_unet_close"}
+{"ts":"2026-04-21T15:41:09Z","type":"leave","player":"B0DBF6B04EC5B588390172B48162DE73","reason":"disconnectaccount"}
+{"ts":"2026-04-21T15:42:04Z","type":"join","player":"NULL:DESKTOP-8QKFDLO-9C9705DA4741E9325B39D2AC0D0836D2","reason":"join_inferred_p2p"}
+{"ts":"2026-04-21T15:42:04Z","type":"leave","player":"NULL:DESKTOP-8QKFDLO-9C9705DA4741E9325B39D2AC0D0836D2","reason":"leave_inferred_unet_close"}
+{"ts":"2026-04-21T15:42:04Z","type":"leave","player":"B0DBF6B04EC5B588390172B48162DE73","reason":"disconnectaccount"}
+{"ts":"2026-04-21T15:48:21Z","type":"join","player":"NULL:DESKTOP-8QKFDLO-9C9705DA4741E9325B39D2AC0D0836D2","reason":"join_inferred_p2p"}
+{"ts":"2026-04-21T15:48:21Z","type":"leave","player":"NULL:DESKTOP-8QKFDLO-9C9705DA4741E9325B39D2AC0D0836D2","reason":"leave_inferred_unet_close"}
+{"ts":"2026-04-21T15:48:21Z","type":"leave","player":"B0DBF6B04EC5B588390172B48162DE73","reason":"disconnectaccount"}
+{"ts":"2026-04-21T16:05:49Z","type":"join","player":"INVALID","reason":"join_inferred_net"}
+{"ts":"2026-04-21T16:05:49Z","type":"join","player":"NULL:DESKTOP-8QKFDLO-9C9705DA4741E9325B39D2AC0D0836D2","reason":"join_inferred_net","name":"DESKTOP-8QKFDLO-9C9705DA4741E9325B39D2AC0D0836D2"}
+{"ts":"2026-04-21T16:05:50Z","type":"join","player":"Ezekiel Uberson","reason":"lognet_join"}
+{"ts":"2026-04-21T16:05:50Z","type":"leave","player":"NULL:DESKTOP-8QKFDLO-9C9705DA4741E9325B39D2AC0D0836D2","reason":"disconnectaccount","name":"Ezekiel Uberson"}
+{"ts":"2026-04-21T16:05:50Z","type":"leave","player":"NULL:DESKTOP-8QKFDLO-9C9705DA4741E9325B39D2AC0D0836D2","reason":"saidfarewell_dump","name":"Ezekiel Uberson"}
+{"ts":"2026-04-21T16:05:50Z","type":"leave","player":"NULL:DESKTOP-8QKFDLO-9C9705DA4741E9325B39D2AC0D0836D2","reason":"leave_inferred_unet_close","name":"Ezekiel Uberson"}
+{"ts":"2026-04-21T16:11:54Z","type":"join","player":"NULL:DESKTOP-8QKFDLO-9C9705DA4741E9325B39D2AC0D0836D2","reason":"join_inferred_net","name":"DESKTOP-8QKFDLO-9C9705DA4741E9325B39D2AC0D0836D2"}
+{"ts":"2026-04-21T16:11:55Z","type":"join","player":"Ezekiel Uberson","reason":"lognet_join"}
+{"ts":"2026-04-21T16:11:55Z","type":"leave","player":"NULL:DESKTOP-8QKFDLO-9C9705DA4741E9325B39D2AC0D0836D2","reason":"disconnectaccount","name":"Ezekiel Uberson"}
+{"ts":"2026-04-21T16:11:55Z","type":"leave","player":"NULL:DESKTOP-8QKFDLO-9C9705DA4741E9325B39D2AC0D0836D2","reason":"saidfarewell_dump","name":"Ezekiel Uberson"}
+{"ts":"2026-04-21T16:11:55Z","type":"leave","player":"NULL:DESKTOP-8QKFDLO-9C9705DA4741E9325B39D2AC0D0836D2","reason":"leave_inferred_unet_close","name":"Ezekiel Uberson"}
+{"ts":"2026-04-21T16:13:27Z","type":"join","player":"NULL:DESKTOP-8QKFDLO-9C9705DA4741E9325B39D2AC0D0836D2","reason":"join_inferred_net","name":"DESKTOP-8QKFDLO-9C9705DA4741E9325B39D2AC0D0836D2"}
+{"ts":"2026-04-21T16:13:27Z","type":"join","player":"Ezekiel Uberson","reason":"lognet_join"}
+{"ts":"2026-04-21T16:13:27Z","type":"leave","player":"NULL:DESKTOP-8QKFDLO-9C9705DA4741E9325B39D2AC0D0836D2","reason":"disconnectaccount","name":"Ezekiel Uberson"}
+{"ts":"2026-04-21T16:13:27Z","type":"leave","player":"NULL:DESKTOP-8QKFDLO-9C9705DA4741E9325B39D2AC0D0836D2","reason":"saidfarewell_dump","name":"Ezekiel Uberson"}
+{"ts":"2026-04-21T16:13:27Z","type":"leave","player":"NULL:DESKTOP-8QKFDLO-9C9705DA4741E9325B39D2AC0D0836D2","reason":"leave_inferred_unet_close","name":"Ezekiel Uberson"}
+{"ts":"2026-04-21T16:16:09Z","type":"join","player":"Ezekiel Uberson","reason":"lognet_join"}
+{"ts":"2026-04-21T16:16:09Z","type":"leave","player":"B0DBF6B04EC5B588390172B48162DE73","reason":"disconnectaccount","name":"Ezekiel Uberson"}
+{"ts":"2026-04-21T16:16:09Z","type":"leave","player":"B0DBF6B04EC5B588390172B48162DE73","reason":"saidfarewell_dump","name":"Ezekiel Uberson"}
+{"ts":"2026-04-21T16:16:09Z","type":"join","player":"NULL:DESKTOP-8QKFDLO-9C9705DA4741E9325B39D2AC0D0836D2","reason":"join_inferred_p2p","name":"Ezekiel Uberson"}
+{"ts":"2026-04-21T16:16:09Z","type":"leave","player":"NULL:DESKTOP-8QKFDLO-9C9705DA4741E9325B39D2AC0D0836D2","reason":"leave_inferred_unet_close","name":"Ezekiel Uberson"}
+{"ts":"2026-04-21T19:26:50Z","type":"join","player":"NULL:DESKTOP-8QKFDLO-9C9705DA4741E9325B39D2AC0D0836D2","reason":"account_uepreloginverified","name":"Ezekiel Uberson"}
+{"ts":"2026-04-21T19:26:51Z","type":"join","player":"Ezekiel Uberson","reason":"lognet_join"}
+{"ts":"2026-04-21T19:26:51Z","type":"leave","player":"NULL:DESKTOP-8QKFDLO-9C9705DA4741E9325B39D2AC0D0836D2","reason":"disconnectaccount","name":"Ezekiel Uberson"}
+{"ts":"2026-04-21T19:26:51Z","type":"leave","player":"NULL:DESKTOP-8QKFDLO-9C9705DA4741E9325B39D2AC0D0836D2","reason":"saidfarewell_dump","name":"Ezekiel Uberson"}
+{"ts":"2026-04-21T19:26:51Z","type":"leave","player":"NULL:DESKTOP-8QKFDLO-9C9705DA4741E9325B39D2AC0D0836D2","reason":"leave_inferred_unet_close","name":"Ezekiel Uberson"}

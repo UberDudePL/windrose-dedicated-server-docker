@@ -1,0 +1,13 @@
+[0;36m[windrose][0m Running doctor checks (prod mode)
+[0;32m[windrose][0m Docker CLI is available
+[0;32m[windrose][0m Docker Compose v2 is available
+[0;32m[windrose][0m Compose configuration is valid
+[0;32m[windrose][0m Host RAM is 15973 MB
+[0;31m[windrose][0m Free disk on / is 8174 MB (minimum 8192 MB)
+[0;32m[windrose][0m Save path exists: /root/windrose/data/R5
+[0;32m[windrose][0m Data path is writable: /root/windrose/data
+[1;33m[windrose][0m Service is not running: windrose
+[0;32m[windrose][0m PORT 7777 is free
+[0;32m[windrose][0m QUERYPORT 7778 is free
+[0;36m[windrose][0m Doctor summary: fails=1, warnings=1
+[0;31m[windrose][0m Doctor checks failed. Fix errors above and run ./serverctl.sh doctor again.

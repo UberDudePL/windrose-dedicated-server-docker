@@ -1,0 +1,11 @@
+{
+  "mode": "prod",
+  "service": "windrose",
+  "container": "windrose",
+  "running": false,
+  "health": "unhealthy",
+  "invite_code": "ub3rt3st",
+  "world_id": "E65C7D8CB96A446B9C8FC0520BD8D81A",
+  "server_name": "Windrose Dev Server",
+  "generated_at": "2026-04-21T23:51:37Z"
+}

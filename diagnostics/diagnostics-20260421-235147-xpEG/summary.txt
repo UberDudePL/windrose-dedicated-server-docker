@@ -1,0 +1,4 @@
+generated_at=2026-04-21T23:51:47Z
+mode=prod
+service=windrose
+compose_dir=/root/windrose

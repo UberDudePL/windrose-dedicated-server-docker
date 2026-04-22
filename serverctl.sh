@@ -23,9 +23,12 @@ SELF_NAME="${WINDROSE_CMD_NAME:-$(basename "$0")}"
 SERVER_DESC_FILE="$SCRIPT_DIR/data/R5/ServerDescription.json"
 ROCKSDB_DIR="$SCRIPT_DIR/data/R5/Saved/SaveProfiles/Default/RocksDB"
 WORLD_NAME_PENDING_FILE=".windrose-world-name"
-UPDATE_LOG_DIR="$SCRIPT_DIR/backups"
+UPDATE_LOG_DIR="$SCRIPT_DIR/logs"
 UPDATE_LOG_FILE="$UPDATE_LOG_DIR/update.log"
+MUTATION_LOCK_DIR="$SCRIPT_DIR/logs/.windrose-mutation-lock"
+MUTATION_LOCK_META="$MUTATION_LOCK_DIR/meta"
 DOCKER_CMD=()
+MUTATION_LOCK_HELD="false"
 
 # ANSI color codes
 _COLOR_RESET='\033[0m'
@@ -181,6 +184,8 @@ Usage:
   $SELF_NAME restart
   $SELF_NAME status
   $SELF_NAME status-json
+  $SELF_NAME doctor
+  $SELF_NAME diagnostics [log-lines]
   $SELF_NAME logs
   $SELF_NAME activity [events|history] [lines]
   $SELF_NAME worlds
@@ -203,6 +208,52 @@ Notes:
   - backup archives default to ./backups with 7-day retention
     - legacy aliases kept: player-history, player-events, test-notify
 EOF
+}
+
+acquire_mutation_lock() {
+    local op="$1"
+    local now
+
+    mkdir -p "$(dirname "$MUTATION_LOCK_DIR")"
+    now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+    if mkdir "$MUTATION_LOCK_DIR" 2>/dev/null; then
+        {
+            echo "pid=$$"
+            echo "op=$op"
+            echo "started_at=$now"
+        } > "$MUTATION_LOCK_META"
+        MUTATION_LOCK_HELD="true"
+        return 0
+    fi
+
+    log_error "Another state-changing operation is already in progress."
+    if [[ -f "$MUTATION_LOCK_META" ]]; then
+        log_info "Current lock metadata:"
+        sed 's/^/  /' "$MUTATION_LOCK_META"
+    fi
+    log_info "Wait for it to finish, then retry: ./$SELF_NAME $op"
+    exit 1
+}
+
+release_mutation_lock() {
+    if [[ "$MUTATION_LOCK_HELD" == "true" ]]; then
+        rm -rf "$MUTATION_LOCK_DIR"
+        MUTATION_LOCK_HELD="false"
+    fi
+}
+
+is_mutating_command() {
+    local cmd="$1"
+
+    case "$cmd" in
+        setup|start|stop|restart|switch|backup|install-backup-cron|pull|update|down)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
 }
 
 start_server() {
@@ -766,6 +817,157 @@ status_json() {
     fi
 }
 
+doctor_server() {
+    local min_ram_mb=8192
+    local min_disk_mb=8192
+    local total_ram_mb=0
+    local free_disk_mb=0
+    local disk_mount="unknown"
+    local fail_count=0
+    local warn_count=0
+    local game_port query_port
+    local container_name health="unknown"
+
+    log_info "Running doctor checks ($ACTIVE_MODE mode)"
+
+    if command -v docker >/dev/null 2>&1; then
+        log_ok "Docker CLI is available"
+    else
+        log_error "Docker CLI is not available in PATH"
+        fail_count=$((fail_count + 1))
+    fi
+
+    if "${DOCKER_CMD[@]}" compose version >/dev/null 2>&1; then
+        log_ok "Docker Compose v2 is available"
+    else
+        log_error "Docker Compose v2 is not available"
+        fail_count=$((fail_count + 1))
+    fi
+
+    if dc config -q >/dev/null 2>&1; then
+        log_ok "Compose configuration is valid"
+    else
+        log_error "Compose configuration is invalid"
+        fail_count=$((fail_count + 1))
+    fi
+
+    if [[ -r /proc/meminfo ]]; then
+        total_ram_mb="$(awk '/^MemTotal:/ {printf "%d", $2/1024}' /proc/meminfo)"
+    fi
+
+    if [[ "$total_ram_mb" =~ ^[0-9]+$ ]] && [[ "$total_ram_mb" -gt 0 ]]; then
+        if [[ "$total_ram_mb" -lt "$min_ram_mb" ]]; then
+            log_error "Host RAM is ${total_ram_mb} MB (minimum ${min_ram_mb} MB)"
+            fail_count=$((fail_count + 1))
+        else
+            log_ok "Host RAM is ${total_ram_mb} MB"
+        fi
+    else
+        log_warn "Could not detect host RAM"
+        warn_count=$((warn_count + 1))
+    fi
+
+    read -r free_disk_mb disk_mount < <(df -Pm "$SCRIPT_DIR" | awk 'NR==2 {print $4, $6}')
+    if [[ "$free_disk_mb" =~ ^[0-9]+$ ]] && [[ "$free_disk_mb" -gt 0 ]]; then
+        if [[ "$free_disk_mb" -lt "$min_disk_mb" ]]; then
+            log_error "Free disk on ${disk_mount} is ${free_disk_mb} MB (minimum ${min_disk_mb} MB)"
+            fail_count=$((fail_count + 1))
+        else
+            log_ok "Free disk on ${disk_mount} is ${free_disk_mb} MB"
+        fi
+    else
+        log_warn "Could not detect free disk space"
+        warn_count=$((warn_count + 1))
+    fi
+
+    if [[ -d "$SCRIPT_DIR/data/R5" ]]; then
+        log_ok "Save path exists: $SCRIPT_DIR/data/R5"
+    else
+        log_warn "Save path not initialized yet: $SCRIPT_DIR/data/R5"
+        warn_count=$((warn_count + 1))
+    fi
+
+    if [[ -d "$SCRIPT_DIR/data" && -w "$SCRIPT_DIR/data" ]]; then
+        log_ok "Data path is writable: $SCRIPT_DIR/data"
+    else
+        log_warn "Data path is not writable: $SCRIPT_DIR/data"
+        warn_count=$((warn_count + 1))
+    fi
+
+    container_name="$(dotenv_value CONTAINER_NAME || true)"
+    container_name="${container_name:-$SERVICE_NAME}"
+
+    if server_is_running; then
+        log_ok "Service is running: $SERVICE_NAME"
+        health="$(${DOCKER_CMD[@]} inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container_name" 2>/dev/null || true)"
+        health="${health//$'\n'/}"
+        if [[ -z "$health" || "$health" == "not-found" ]]; then
+            log_warn "Container health could not be determined for $container_name"
+            warn_count=$((warn_count + 1))
+        elif [[ "$health" == "healthy" ]]; then
+            log_ok "Container health: healthy"
+        elif [[ "$health" == "none" ]]; then
+            log_warn "Container healthcheck is not configured"
+            warn_count=$((warn_count + 1))
+        else
+            log_warn "Container health: $health"
+            warn_count=$((warn_count + 1))
+        fi
+    else
+        log_warn "Service is not running: $SERVICE_NAME"
+        warn_count=$((warn_count + 1))
+    fi
+
+    game_port="${PORT:-$(dotenv_value PORT || true)}"
+    query_port="${QUERYPORT:-$(dotenv_value QUERYPORT || true)}"
+    game_port="${game_port:-7777}"
+    query_port="${query_port:-7778}"
+
+    if port_is_in_use "$game_port"; then
+        if server_is_running; then
+            log_ok "PORT ${game_port} is bound"
+        else
+            log_warn "PORT ${game_port} is already in use while service is stopped"
+            warn_count=$((warn_count + 1))
+        fi
+    else
+        if server_is_running; then
+            log_info "PORT ${game_port} is not detected as bound on host (can be normal with invite-code NAT punch-through)"
+        else
+            log_ok "PORT ${game_port} is free"
+        fi
+    fi
+
+    if port_is_in_use "$query_port"; then
+        if server_is_running; then
+            log_ok "QUERYPORT ${query_port} is bound"
+        else
+            log_warn "QUERYPORT ${query_port} is already in use while service is stopped"
+            warn_count=$((warn_count + 1))
+        fi
+    else
+        if server_is_running; then
+            log_info "QUERYPORT ${query_port} is not detected as bound on host (can be normal with invite-code NAT punch-through)"
+        else
+            log_ok "QUERYPORT ${query_port} is free"
+        fi
+    fi
+
+    log_info "Doctor summary: fails=${fail_count}, warnings=${warn_count}"
+    if [[ "$fail_count" -gt 0 ]]; then
+        log_error "Doctor checks failed. Fix errors above and run ./$SELF_NAME doctor again."
+        return 1
+    fi
+
+    if [[ "$warn_count" -gt 0 ]]; then
+        log_warn "Doctor checks finished with warnings."
+    else
+        log_ok "Doctor checks passed."
+    fi
+
+    return 0
+}
+
 follow_logs() {
     log_info "Following logs"
     dc logs --timestamps -f "$SERVICE_NAME" | sed 's/\.[0-9]*Z/Z/' | sed \
@@ -784,7 +986,7 @@ json_escape() {
 
 player_history() {
     local lines="${1:-1200}"
-    local history_file="$SCRIPT_DIR/backups/player-history.log"
+    local history_file="$SCRIPT_DIR/logs/player-history.log"
     local writer_cmd=(tee -a "$history_file")
 
     if [[ ! "$lines" =~ ^[0-9]+$ ]] || [[ "$lines" -le 0 ]]; then
@@ -818,9 +1020,9 @@ player_history() {
 
 player_events() {
     local lines="${1:-4000}"
-    local events_file="$SCRIPT_DIR/backups/player-events.log"
-    local seen_file="$SCRIPT_DIR/backups/player-events.seen"
-    local identities_file="$SCRIPT_DIR/backups/player-identities.tsv"
+    local events_file="$SCRIPT_DIR/logs/player-events.log"
+    local seen_file="$SCRIPT_DIR/state/player-events.seen"
+    local identities_file="$SCRIPT_DIR/state/player-identities.tsv"
     local tmp_file
     local log_tmp_file
     local identity_tmp_file
@@ -835,7 +1037,7 @@ player_events() {
         exit 1
     fi
 
-    mkdir -p "$SCRIPT_DIR/backups"
+    mkdir -p "$SCRIPT_DIR/logs" "$SCRIPT_DIR/state"
     touch "$events_file" "$seen_file" "$identities_file"
     tmp_file="$(mktemp)"
     log_tmp_file="$(mktemp)"
@@ -1594,7 +1796,7 @@ upload_backup_to_discord() {
 install_backup_cron() {
     local schedule="${1:-0 6 * * *}"
     local backup_cmd="$SCRIPT_DIR/windrose backup"
-    local backup_log_dir="$SCRIPT_DIR/backups"
+    local backup_log_dir="$SCRIPT_DIR/logs"
     local backup_log_file="$backup_log_dir/backup.log"
     local cron_tag="# windrose-backup-job"
     local cron_cmd
@@ -1674,6 +1876,112 @@ show_update_log() {
     tail -n "$lines" "$UPDATE_LOG_FILE"
 }
 
+verify_update_runtime() {
+    local timeout="${UPDATE_VERIFY_TIMEOUT:-120}"
+    local container_name
+    local health="unknown"
+
+    if ! [[ "$timeout" =~ ^[0-9]+$ ]] || [[ "$timeout" -le 0 ]]; then
+        timeout=120
+    fi
+
+    container_name="$(dotenv_value CONTAINER_NAME || true)"
+    container_name="${container_name:-$SERVICE_NAME}"
+
+    log_step "Verifying service runtime after update (timeout ${timeout}s)"
+
+    for _ in $(seq 1 "$timeout"); do
+        if server_is_running; then
+            health="$(${DOCKER_CMD[@]} inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container_name" 2>/dev/null || true)"
+            health="${health//$'\n'/}"
+
+            if [[ "$health" == "healthy" || "$health" == "none" ]]; then
+                log_step_done
+                log_ok "Update verification passed (running=true, health=${health})."
+                append_update_log "Post-update verify: running=true health=${health}"
+                return 0
+            fi
+
+            if [[ "$health" == "unhealthy" ]]; then
+                log_step_failed
+                log_error "Container became unhealthy after update."
+                log_info "Run: ./$SELF_NAME logs"
+                log_info "Run: ./$SELF_NAME update-log"
+                append_update_log "Post-update verify: unhealthy"
+                return 1
+            fi
+        fi
+
+        sleep 1
+    done
+
+    log_step_failed
+    log_error "Update verification timed out after ${timeout}s."
+    log_info "Run: ./$SELF_NAME status"
+    log_info "Run: ./$SELF_NAME logs"
+    log_info "Run: ./$SELF_NAME update-log"
+    append_update_log "Post-update verify: timeout"
+    return 1
+}
+
+diagnostics_bundle() {
+    local lines="${1:-300}"
+    local timestamp tmp_dir out_file
+    local container_name
+
+    if ! [[ "$lines" =~ ^[0-9]+$ ]] || [[ "$lines" -le 0 ]]; then
+        log_error "Invalid log line count '$lines'. Use a positive integer."
+        exit 1
+    fi
+
+    local diagnostics_dir="$SCRIPT_DIR/diagnostics"
+    mkdir -p "$diagnostics_dir"
+    timestamp="$(date -u +%Y%m%d-%H%M%S)"
+    tmp_dir="$(mktemp -d "$diagnostics_dir/diagnostics-${timestamp}-XXXX")"
+    out_file="$diagnostics_dir/windrose-diagnostics-${timestamp}.tar.gz"
+
+    log_step "Collecting diagnostics bundle"
+
+    {
+        echo "generated_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo "mode=$ACTIVE_MODE"
+        echo "service=$SERVICE_NAME"
+        echo "compose_dir=$COMPOSE_DIR"
+    } > "$tmp_dir/summary.txt"
+
+    dc ps > "$tmp_dir/compose-ps.txt" 2>&1 || true
+    dc config > "$tmp_dir/compose-config.txt" 2>&1 || true
+    dc logs --no-color --timestamps --tail "$lines" "$SERVICE_NAME" > "$tmp_dir/container-logs-tail.txt" 2>&1 || true
+
+    if [[ -f "$UPDATE_LOG_FILE" ]]; then
+        tail -n "$lines" "$UPDATE_LOG_FILE" > "$tmp_dir/update-log-tail.txt" 2>&1 || true
+    fi
+
+    status_json > "$tmp_dir/status.json" 2>&1 || true
+    if ! doctor_server > "$tmp_dir/doctor.txt" 2>&1; then
+        echo "doctor_exit=nonzero" >> "$tmp_dir/summary.txt"
+    fi
+
+    if [[ -f "$SCRIPT_DIR/.env" ]]; then
+        sed -E 's/(TOKEN|PASSWORD|WEBHOOK|PASS)=.*/\1=REDACTED/gI' "$SCRIPT_DIR/.env" > "$tmp_dir/env-redacted.txt"
+    fi
+
+    container_name="$(dotenv_value CONTAINER_NAME || true)"
+    container_name="${container_name:-$SERVICE_NAME}"
+    ${DOCKER_CMD[@]} inspect "$container_name" > "$tmp_dir/container-inspect.json" 2>/dev/null || true
+
+    if ! tar -czf "$out_file" -C "$tmp_dir" . >/dev/null 2>&1; then
+        log_step_failed
+        rm -rf "$tmp_dir"
+        log_error "Failed to create diagnostics bundle archive."
+        exit 1
+    fi
+
+    rm -rf "$tmp_dir"
+    log_step_done
+    log_ok "Diagnostics bundle created: $out_file"
+}
+
 update_server() {
     local mode="${1:-}"
 
@@ -1685,6 +1993,11 @@ update_server() {
     mkdir -p "$UPDATE_LOG_DIR"
     rotate_update_logs
     append_update_log "Update started (mode=$ACTIVE_MODE, compose_dir=$COMPOSE_DIR, service=$SERVICE_NAME, strategy=${mode:---safe})"
+
+    if [[ -f "$SCRIPT_DIR/backups/player-events.log" ]]; then
+        log_warn "Old file layout detected in backups/. Run ./migrate-folders.sh once to reorganize logs and state files."
+    fi
+
     log_info "Progress bar shows update stages, not byte-level download progress."
 
     render_progress_bar 0
@@ -1729,8 +2042,13 @@ update_server() {
         fi
     fi
 
+    if ! verify_update_runtime; then
+        append_update_log "Update finished with verification failure"
+        exit 1
+    fi
+
     render_progress_bar 100
-    log_ok "Server starting. Check status with: ./$SELF_NAME status"
+    log_ok "Server updated and verified."
     log_info "Detailed update log: $UPDATE_LOG_FILE"
     append_update_log "Update finished successfully"
 }
@@ -2086,7 +2404,14 @@ EOF
 init_docker_cmd
 require_tools
 
-case "${1:-help}" in
+trap release_mutation_lock EXIT
+
+CMD="${1:-help}"
+if is_mutating_command "$CMD"; then
+    acquire_mutation_lock "$CMD"
+fi
+
+case "$CMD" in
     setup)
         setup_server
         ;;
@@ -2104,6 +2429,12 @@ case "${1:-help}" in
         ;;
     status-json)
         status_json
+        ;;
+    doctor)
+        doctor_server
+        ;;
+    diagnostics)
+        diagnostics_bundle "${2:-300}"
         ;;
     logs)
         follow_logs

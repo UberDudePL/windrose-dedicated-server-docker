@@ -1,0 +1,5 @@
+[2026-04-21T15:05:22,094462209+00:00] Running (safe): docker compose up -d
+ Image ghcr.io/uberdudepl/windrose-dedicated-server-docker:v1.3.1 Pulling 
+ Image ghcr.io/uberdudepl/windrose-dedicated-server-docker:v1.3.1 Pulled 
+ Container windrose Running 
+[2026-04-21T15:05:23,165535875+00:00] Update finished successfully

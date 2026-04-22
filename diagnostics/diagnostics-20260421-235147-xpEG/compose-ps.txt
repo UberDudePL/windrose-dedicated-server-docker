@@ -1,0 +1,3 @@
++ cd /root/windrose
++ docker compose -f docker-compose.yml ps
+NAME      IMAGE     COMMAND   SERVICE   CREATED   STATUS    PORTS

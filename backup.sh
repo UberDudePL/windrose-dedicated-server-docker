@@ -216,6 +216,22 @@ create_archive() {
     fi
   fi
   echo -e " ${_COLOR_GREEN}DONE${_COLOR_RESET}  → $(basename "$archive_path")"
+
+  log_step "Verifying $label backup integrity"
+  if [[ "$BACKUP_FORMAT" == "zip" ]]; then
+    if ! zip -T "$archive_path" >/dev/null 2>&1; then
+      echo -e " ${_COLOR_RED}FAIL${_COLOR_RESET}"
+      log_error "Backup integrity verification failed: $archive_path"
+      return 1
+    fi
+  else
+    if ! tar -tzf "$archive_path" >/dev/null 2>&1; then
+      echo -e " ${_COLOR_RED}FAIL${_COLOR_RESET}"
+      log_error "Backup integrity verification failed: $archive_path"
+      return 1
+    fi
+  fi
+  echo -e " ${_COLOR_GREEN}PASS${_COLOR_RESET}"
 }
 
 if [[ "$BACKUP_FORMAT" == "zip" ]]; then

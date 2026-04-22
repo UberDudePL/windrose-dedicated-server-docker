@@ -1,0 +1,52 @@
++ local container_name running health=unknown
++ local invite_code= world_id= server_name=
++ local generated_at
+++ dotenv_value CONTAINER_NAME
+++ local key=CONTAINER_NAME
+++ local env_file=/root/windrose/.env
+++ [[ ! -f /root/windrose/.env ]]
+++ awk -F= -v key=CONTAINER_NAME '$1 == key {sub(/^[^=]*=/, "", $0); print $0}' /root/windrose/.env
+++ tail -n 1
++ container_name=windrose
++ container_name=windrose
++ server_is_running
++ dc ps --status running --services
++ grep -Fx windrose
++ running=false
+++ docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' windrose
++ health=unhealthy
++ health=unhealthy
++ [[ -z unhealthy ]]
+++ date -u +%Y-%m-%dT%H:%M:%SZ
++ generated_at=2026-04-21T23:51:47Z
++ [[ -f /root/windrose/data/R5/ServerDescription.json ]]
++ command -v jq
+++ jq -r '.ServerDescription_Persistent.InviteCode // .InviteCode // empty' /root/windrose/data/R5/ServerDescription.json
++ invite_code=ub3rt3st
+++ jq -r '.ServerDescription_Persistent.WorldIslandId // empty' /root/windrose/data/R5/ServerDescription.json
++ world_id=E65C7D8CB96A446B9C8FC0520BD8D81A
+++ jq -r '.ServerDescription_Persistent.ServerName // empty' /root/windrose/data/R5/ServerDescription.json
++ server_name='Windrose Dev Server'
++ command -v jq
++ jq -n --arg mode prod --arg service windrose --arg container windrose --arg running false --arg health unhealthy --arg invite_code ub3rt3st --arg world_id E65C7D8CB96A446B9C8FC0520BD8D81A --arg server_name 'Windrose Dev Server' --arg generated_at 2026-04-21T23:51:47Z '{
+                mode: $mode,
+                service: $service,
+                container: $container,
+                running: ($running == "true"),
+                health: $health,
+                invite_code: $invite_code,
+                world_id: $world_id,
+                server_name: $server_name,
+                generated_at: $generated_at
+            }'
+{
+  "mode": "prod",
+  "service": "windrose",
+  "container": "windrose",
+  "running": false,
+  "health": "unhealthy",
+  "invite_code": "ub3rt3st",
+  "world_id": "E65C7D8CB96A446B9C8FC0520BD8D81A",
+  "server_name": "Windrose Dev Server",
+  "generated_at": "2026-04-21T23:51:47Z"
+}

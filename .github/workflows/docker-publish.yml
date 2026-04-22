@@ -64,19 +64,27 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Compute tags
         id: tags
         run: |
           repo_lc="${GITHUB_REPOSITORY,,}"
-          image="ghcr.io/${repo_lc}"
+          ghcr_image="ghcr.io/${repo_lc}"
+          dh_image="docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${GITHUB_REPOSITORY##*/}"
           ref_name="${GITHUB_REF_NAME}"
-          tags="${image}:${ref_name}${{ matrix.tag_suffix }}"
+          tags="${ghcr_image}:${ref_name}${{ matrix.tag_suffix }},${dh_image}:${ref_name}${{ matrix.tag_suffix }}"
 
           if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
             IFS=',' read -ra aliases <<< "${{ matrix.aliases }}"
             for alias in "${aliases[@]}"; do
               if [[ -n "$alias" ]]; then
-                tags="$tags,${image}:$alias"
+                tags="$tags,${ghcr_image}:${alias},${dh_image}:${alias}"
               fi
             done
           fi

@@ -1,6 +1,13 @@
 # Windrose Dedicated Server — Docker
 
-Self-hosted dedicated server for [Windrose](https://store.steampowered.com/app/2700940/Windrose/) running on Linux via Docker, SteamCMD and Wine.
+![GitHub Stars](https://img.shields.io/github/stars/UberDudePL/windrose-dedicated-server-docker)
+![License](https://img.shields.io/github/license/UberDudePL/windrose-dedicated-server-docker)
+![Version](https://img.shields.io/github/v/release/UberDudePL/windrose-dedicated-server-docker)
+![Docker Pulls](https://img.shields.io/docker/pulls/uberdudepl/windrose-server)
+
+Windrose dedicated server for Linux using Docker, SteamCMD and Wine, with persistent saves, backups, diagnostics and optional Discord/Gotify notifications.
+
+Self-hosted and production-friendly setup with first-time setup helper, world switching, health checks and 24/7 operation support.
 
 > **No port forwarding required** — players join via **Invite Code** from `ServerDescription.json`.
 
@@ -17,7 +24,6 @@ Self-hosted dedicated server for [Windrose](https://store.steampowered.com/app/2
 - [Multiple worlds](#multiple-worlds)
 - [How players join](#how-players-join)
 - [Useful commands](#useful-commands)
-- [Optional helper launcher](#optional-helper-launcher)
 - [Quick diagnostics](#quick-diagnostics)
 - [Activity notifications: Discord, Gotify, or both](#activity-notifications-discord-gotify-or-both)
 - [Save transfer and world selection](#save-transfer-and-world-selection)
@@ -30,6 +36,10 @@ Self-hosted dedicated server for [Windrose](https://store.steampowered.com/app/2
 - [Issues and suggestions](#issues-and-suggestions)
 - [Support](#support)
 - [License](#license)
+
+Additional documents:
+- [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — full symptom table, diagnostics playbooks, network debugging
+- [DEVELOPMENT.md](DEVELOPMENT.md) — local builds, image channels, CI workflows
 
 ---
 
@@ -142,7 +152,7 @@ docker compose logs -f windrose
 Recommended image tags:
 
 ```text
-Stable: ghcr.io/uberdudepl/windrose-dedicated-server-docker:v1.3.3
+Stable: ghcr.io/uberdudepl/windrose-dedicated-server-docker:v1.4.0
 Latest: ghcr.io/uberdudepl/windrose-dedicated-server-docker:latest
 Staging fallback: ghcr.io/uberdudepl/windrose-dedicated-server-docker:staging
 Debug tools: ghcr.io/uberdudepl/windrose-dedicated-server-docker:debug
@@ -152,49 +162,7 @@ Set the image version in `.env` with:
 
 ```dotenv
 IMAGE_REPOSITORY=ghcr.io/uberdudepl/windrose-dedicated-server-docker
-IMAGE_TAG=v1.3.3
-```
-
-### Optional: development mode
-
-Most users can skip this section. Use the dev override only when you want to test local changes to the image or startup scripts:
-
-```bash
-# Build locally and start with the dev override
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
-
-# Restart after editing entrypoint.sh
-docker compose -f docker-compose.yml -f docker-compose.dev.yml restart windrose
-
-# Stop the dev stack
-docker compose -f docker-compose.yml -f docker-compose.dev.yml down
-```
-
-The default [docker-compose.yml](docker-compose.yml) is for stable published images, while [docker-compose.dev.yml](docker-compose.dev.yml) is for local development.
-
-### Fast local test (no commit, no remote image pull)
-
-Use this flow when you want to test local changes immediately without committing and without pulling a new image from GHCR:
-
-```bash
-# 1) Build local image from current working tree
-docker compose -f docker-compose.yml -f docker-compose.dev.yml build windrose
-
-# 2) Start with the locally built image
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d windrose
-
-# 3) Watch startup logs
-docker compose -f docker-compose.yml -f docker-compose.dev.yml logs -f windrose
-```
-
-Notes:
-
-- `docker-compose.dev.yml` sets `image: windrose-ds:dev` and `pull_policy: never`, so Compose uses your local build.
-- This keeps existing mounted data (`./data`, `./steam-home`) and does not require any Git push/tag workflow.
-- If you only changed mounted scripts (`entrypoint.sh`, `healthcheck.sh`, files in `./scripts`), a rebuild is not required. Use:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml restart windrose
+IMAGE_TAG=v1.4.0
 ```
 
 ### Image variants
@@ -202,46 +170,10 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml restart windrose
 - `latest` / version tags: stable Wine build for normal use.
 - `staging`: fallback image using Wine Staging plus `winetricks` prewarm (`win10`, `vcrun2022`) for host-specific Wine issues.
 - `debug`: stable Wine build plus extra diagnostic tools (`dnsutils`, `file`, `iproute2`, `lsof`, `strace`) and more verbose Wine logging.
-- `dev`, `dev-staging`, `dev-debug`: automatically published developer channels from the `main` branch.
 
 Use the stable channel unless you are actively diagnosing host-specific startup problems.
 
-### Build and release workflows
-
-- [`.github/workflows/ci.yml`](.github/workflows/ci.yml): validates shell syntax and builds the stable, staging, and debug images in CI.
-- [`.github/workflows/docker-developer.yml`](.github/workflows/docker-developer.yml): publishes developer images from `main`.
-- [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml): publishes release images from version tags.
-
-### Local smoke build commands
-
-Use these commands when you want to verify all image variants locally before pushing changes:
-
-```bash
-# stable
-docker build \
-   --build-arg WINE_FLAVOR=stable \
-   --build-arg ENABLE_WINETRICKS=false \
-   --build-arg INSTALL_DEBUG_TOOLS=false \
-   --build-arg DEFAULT_WINEDEBUG=-all \
-   -t windrose-smoke:stable .
-
-# staging
-docker build \
-   --build-arg WINE_FLAVOR=staging \
-   --build-arg ENABLE_WINETRICKS=true \
-   --build-arg WINETRICKS_PACKAGES='win10 vcrun2022' \
-   --build-arg INSTALL_DEBUG_TOOLS=false \
-   --build-arg DEFAULT_WINEDEBUG=-all \
-   -t windrose-smoke:staging .
-
-# debug
-docker build \
-   --build-arg WINE_FLAVOR=stable \
-   --build-arg ENABLE_WINETRICKS=false \
-   --build-arg INSTALL_DEBUG_TOOLS=true \
-   --build-arg DEFAULT_WINEDEBUG='warn+timestamp' \
-   -t windrose-smoke:debug .
-```
+For local development, builds, and CI workflows, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ---
 
@@ -293,7 +225,7 @@ MULTIHOME=0.0.0.0
 | `CONTAINER_NAME` | `windrose` | Change only if you run more than one server on the same host |
 | `HOSTNAME` | `localhost` | Internal container hostname used by ICE candidate discovery; keep `localhost` unless custom name resolves inside container |
 | `IMAGE_REPOSITORY` | GHCR repo | Published image repository |
-| `IMAGE_TAG` | `v1.3.3` | Stable image tag to run |
+| `IMAGE_TAG` | `v1.4.0` | Stable image tag to run |
 | `PUID` | `1000` | User id used for mounted files |
 | `PGID` | `1000` | Group id used for mounted files |
 | `UPDATE_ON_START` | `true` | Update and validate server files on startup |
@@ -400,6 +332,12 @@ docker compose stop
 # JSON snapshot for monitoring integrations
 ./windrose status-json
 
+# Full operator preflight checks
+./windrose doctor
+
+# Create a diagnostics bundle (default: 300 log lines)
+./windrose diagnostics
+
 # View live logs
 docker compose logs -f windrose
 
@@ -452,48 +390,6 @@ docker compose ps
 ./windrose install /usr/local/bin/windrosectl
 ```
 
-## Optional helper launcher
-
-For easier day-to-day use, this repo also includes a small helper launcher.
-
-```bash
-chmod +x ./windrose ./serverctl.sh
-
-./windrose setup
-./windrose start
-./windrose stop
-./windrose restart
-./windrose status
-./windrose status-json
-./windrose logs
-./windrose activity history
-./windrose activity events
-./windrose worlds
-./windrose worlds-check
-./windrose switch
-./windrose notify
-./windrose notify status
-./windrose notify test
-./windrose backup
-./windrose install-backup-cron
-./windrose pull
-./windrose update
-./windrose update-log
-./windrose down
-./windrose install /usr/local/bin/windrosectl
-```
-
-Optional system-wide install:
-
-```bash
-./windrose install /usr/local/bin/windrosectl
-windrosectl start
-```
-
-If you want the plain command name instead, install it as `/usr/local/bin/windrose`.
-
----
-
 ## Quick diagnostics
 
 Use these commands for a fast operational check:
@@ -502,11 +398,17 @@ Use these commands for a fast operational check:
 # 1) Basic container and health status
 ./windrose status
 
-# 2) World integrity check (orphan/broken entries)
+# 2) Full host/runtime preflight
+./windrose doctor
+
+# 3) World integrity check (orphan/broken entries)
 ./windrose worlds-check
 
-# 3) Recent critical network/auth errors from current log file
+# 4) Recent critical network/auth errors from current log file
 docker compose logs --no-color --tail 400 windrose | grep -Ei "account verification failed|turn session was expired|p2pgate disconnected|server authorization failed|login finished with error"
+
+# 5) Create diagnostics bundle for incident review
+./windrose diagnostics
 ```
 
 If command `3` returns lines repeatedly, check outbound connectivity and firewall/NAT behavior for `*.windrose.support` on UDP/TCP `3478`.
@@ -516,12 +418,14 @@ For a machine-readable snapshot, use `./windrose status-json`.
 For quick player activity extraction from logs, use `./windrose activity history [lines]`.
 
 For structured join/leave records, use `./windrose activity events [lines]`.
-Events are appended as JSON lines to `./backups/player-events.log`.
+Events are appended as JSON lines to `./logs/player-events.log`.
 The parser is best-effort and now prefers richer Windrose/UE markers such as `Login request`, prelogin/account verification, and account summary dumps when they are present.
 Entries may also include an optional `name` field when the server log exposes a human-readable player name.
-A persistent identity map is maintained in `./backups/player-identities.tsv` and reused to improve name resolution for disconnect events.
+A persistent identity map is maintained in `./state/player-identities.tsv` and reused to improve name resolution for disconnect events.
 
 Legacy aliases are still supported for backward compatibility: `./windrose player-history`, `./windrose player-events`.
+
+For deeper investigation, extended symptom table, and network playbooks, see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
 ---
 
@@ -569,11 +473,11 @@ The helper asks whether to run in background mode. If you start it in background
 Background logs are written to:
 
 ```text
-./backups/notify.log
+./logs/notify.log
 ```
 
 At the moment this is log-based and best-effort. Disconnect events are easier to detect reliably than joins, so treat it as a lightweight helper rather than a perfect audit system.
-When available, the notifier also uses `./backups/player-identities.tsv` to resolve player names for disconnect lines that do not contain a name directly.
+When available, the notifier also uses `./state/player-identities.tsv` to resolve player names for disconnect lines that do not contain a name directly.
 
 ---
 
@@ -683,6 +587,8 @@ Supported values:
 - `tar.gz` (default)
 - `zip` (more convenient to open on Windows)
 
+After each archive is created, the script runs an integrity test (`tar -tzf` or `zip -T`) and fails fast if verification does not pass.
+
 If you use `BACKUP_FORMAT=zip`, the script checks whether `zip` is available.
 In an interactive shell it asks whether it should install `zip`; in cron/non-interactive mode it exits with a clear error.
 
@@ -724,89 +630,42 @@ windrose/
 │   └── R5/
 │       ├── ServerDescription.json
 │       └── Saved/
-└── steam-home/         # Wine prefix and SteamCMD state (created on first run)
+├── steam-home/         # Wine prefix and SteamCMD state (created on first run)
+├── backups/            # Archive files only (tar.gz, zip) from backup operations
+├── logs/               # Log files (update, backup, player activity)
+├── state/              # Metadata (player identities, event deduplication)
+└── diagnostics/        # Diagnostics bundles (tar.gz archives)
 ```
+
+**Migration note:** If you are upgrading from an older version with a combined `backups/` folder, run the included `migrate-folders.sh` script once to reorganize files:
+
+```bash
+./migrate-folders.sh
+```
+
+This moves log files, state files, and diagnostics to their respective folders while keeping backup archives in `./backups`. The script is safe to run multiple times.
 
 ---
 
 ## Troubleshooting
 
+For the full symptom table, diagnostics playbooks, and network troubleshooting, see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+
+Common quick fixes:
+
 | Symptom | Fix |
 |---------|-----|
 | `wine: '/home/steam' is not owned by you` | Set `PUID` and `PGID` correctly in `.env`, then restart the container |
 | `Server is already active for display 99` | Stale Xvfb lock — entrypoint removes it automatically on restart |
-| `ERROR! Failed to install app` | Check SteamCMD logs and verify the app id and Steam login mode |
-| Server not visible to players | Share the `InviteCode` from `ServerDescription.json` |
-| Connection works on some networks but not others | The network or ISP may be blocking STUN/TURN traffic used by the game; check access to `*.windrose.support` on port `3478` over UDP/TCP |
-| Remote clients connect, LAN clients fail after ~10 seconds | See the LAN ICE note below; this is usually Docker bridge NAT + routing mismatch |
-| `Account verification failed`, `Turn session was expired`, `BL P2PGate disconnected` | Usually upstream TURN/P2P session/network issue; verify stable outbound access to `*.windrose.support` on UDP/TCP `3478`, avoid aggressive NAT/firewall timeouts, then retry reconnect |
 | Config reset after restart | Edit JSON only when container is stopped |
+| Server not visible to players | Share the `InviteCode` from `ServerDescription.json` |
 | Players have issues after a game patch | Keep the dedicated server version updated to match the game version |
-
-### Client cannot connect (quick checklist)
-
-Use this first-line checklist before deeper debugging:
-
-1. Restart the game client and Steam.
-2. Restart the router and the client PC.
-3. Disable VPN/proxy on the client.
-4. Temporarily disable aggressive antivirus/firewall filtering.
-5. Retry joining 3-5 times.
-
-If the issue persists only on selected networks, continue with DNS and ISP checks below.
-
-### DNS check for game services
-
-Run these commands on the affected client machine:
-
-```bash
-nslookup r5coopapigateway-eu-release.windrose.support
-nslookup r5coopapigateway-eu-release.windrose.support 8.8.8.8
-```
-
-How to interpret results:
-
-- Expected: a normal IPv4 address is returned.
-- `Non-existent domain`: local DNS/ISP may be filtering the domain.
-- `Request timed out`: DNS resolver or local security tooling may be blocking requests.
-- `127.0.0.1`: local override, VPN, or ISP spoofing is likely.
-- IPv6-only answer: prefer IPv4 for this game flow.
-
-### ISP/network block playbook (3478 UDP/TCP)
-
-If failures repeat on one ISP/network, ask for a whitelist check with this template:
-
-- Domains: `*.windrose.support`
-- Port: `3478`
-- Protocols: `UDP`, `TCP`
-- Traffic type: `STUN/TURN` (NAT traversal)
-- Purpose: legitimate game connectivity
-
-Also test from a different network (for example mobile hotspot) to confirm whether the issue is network-specific.
-
-### LAN clients fail, WAN clients work
-
-If the server runs in Docker bridge mode on Linux and LAN clients are dropped after about 10 seconds, this is often an ICE/STUN consent issue caused by host NAT (MASQUERADE).
-
-Typical symptoms:
-
-- WAN clients connect, LAN clients fail
-- Server logs contain `Check consent was failed for IceControlling. Reach timeout 10000 ms`
-
-Practical checklist:
-
-1. Confirm whether you are on bridge networking (custom setups) vs host networking.
-2. On the Docker host, add a NAT bypass rule for traffic from container subnet to LAN subnet.
-3. On LAN clients, add a route back to the Docker subnet via the server host LAN IP.
-4. Re-test and confirm ICE consent succeeds in logs.
-
-For this repository default (`network_mode: host`), this specific bridge-NAT issue is usually not applicable.
 
 ---
 
 ## Image versions
 
-- Most users should keep `IMAGE_TAG=v1.3.3` for a stable server.
+- Most users should keep `IMAGE_TAG=v1.4.0` for a stable server.
 - Use `latest` only for testing.
 - Use `staging` only as a fallback for Wine compatibility issues on a specific host.
 - Use `debug` when you need extra troubleshooting tools inside the image.
@@ -871,12 +730,8 @@ Use `./windrose update-log [lines]` to quickly inspect recent update details fro
 
 ### What is the difference between stable and latest?
 
-Use a pinned version tag such as `v1.3.3` for production stability. Use `latest` only when you want the newest changes for testing.
-
-### When should I try `staging` or `debug`?
-
-- Try `staging` when stable Wine builds fail on a specific host with prefix or runtime compatibility issues.
-- Try `debug` when you need extra tools and more verbose logging to investigate Wine, DNS, or network problems.
+Use a pinned version tag such as `v1.4.0` for production stability. Use `latest` only when you want the newest changes for testing.
+For developer image channels (dev, dev-staging, dev-debug), see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ---
 

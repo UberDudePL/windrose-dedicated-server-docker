@@ -1,0 +1,40 @@
+windrose  | 2026-04-21T21:42:07.415038009Z [2026.04.21-21.42.07:412][ 47]R5LogSystemResources:         [612047] ...emResourcesSubsystem::ReportUsageHistoryList    
+windrose  | 2026-04-21T21:42:07.415078706Z Resource Usage History. Last 1 records:
+windrose  | 2026-04-21T21:42:07.415083438Z 	19926 21:42:07: 580/15973 Mb
+windrose  | 2026-04-21T21:42:07.415086920Z                              [D:\Source\Build\work\gameRepoCheckoutDir\Plugins\Tools\R5SystemResourceMonitor\Source\R5SystemResourceMonitor\Private\R5SystemResourcesSubsystem.cpp:346]
+windrose  | 2026-04-21T21:57:07.534035491Z [2026.04.21-21.57.07:532][244]R5LogSystemResources:         [639243] ...emResourcesSubsystem::ReportUsageHistoryList    
+windrose  | 2026-04-21T21:57:07.534083726Z Resource Usage History. Last 1 records:
+windrose  | 2026-04-21T21:57:07.534089788Z 	20807 21:57:07: 580/15973 Mb
+windrose  | 2026-04-21T21:57:07.534093391Z                              [D:\Source\Build\work\gameRepoCheckoutDir\Plugins\Tools\R5SystemResourceMonitor\Source\R5SystemResourceMonitor\Private\R5SystemResourcesSubsystem.cpp:346]
+windrose  | 2026-04-21T21:57:30.791095407Z [2026.04.21-21.57.30:789][947]R5LogBLDalAQ: Warning:        [639947] R5BLDalAsyncQueue::DetectProblems                  [s: 366: 1192: commitT] Slow task. Task was finished in 610 ms. DebugInfo
+windrose  | 2026-04-21T21:57:30.791132937Z Commit transaction        [D:\Source\Build\work\gameRepoCheckoutDir\Plugins\R5BusinessLogicCore\Source\R5BLCommon\Cpp\R5DataAbstractionLayer\R5BLDalAsyncQueue.cpp:1210]
+windrose  | 2026-04-21T22:12:08.118173183Z [2026.04.21-22.12.08:117][254]R5LogSystemResources:         [666254] ...emResourcesSubsystem::ReportUsageHistoryList    
+windrose  | 2026-04-21T22:12:08.118248256Z Resource Usage History. Last 1 records:
+windrose  | 2026-04-21T22:12:08.118253803Z 	21688 22:12:08: 581/15973 Mb
+windrose  | 2026-04-21T22:12:08.118257575Z                              [D:\Source\Build\work\gameRepoCheckoutDir\Plugins\Tools\R5SystemResourceMonitor\Source\R5SystemResourceMonitor\Private\R5SystemResourcesSubsystem.cpp:346]
+windrose  | 2026-04-21T22:27:08.483591831Z [2026.04.21-22.27.08:482][440]R5LogSystemResources:         [693440] ...emResourcesSubsystem::ReportUsageHistoryList    
+windrose  | 2026-04-21T22:27:08.483684034Z Resource Usage History. Last 1 records:
+windrose  | 2026-04-21T22:27:08.483688399Z 	22571 22:27:08: 581/15973 Mb
+windrose  | 2026-04-21T22:27:08.483691061Z                              [D:\Source\Build\work\gameRepoCheckoutDir\Plugins\Tools\R5SystemResourceMonitor\Source\R5SystemResourceMonitor\Private\R5SystemResourcesSubsystem.cpp:346]
+windrose  | 2026-04-21T22:42:08.951176798Z [2026.04.21-22.42.08:950][600]R5LogSystemResources:         [720599] ...emResourcesSubsystem::ReportUsageHistoryList    
+windrose  | 2026-04-21T22:42:08.951211827Z Resource Usage History. Last 1 records:
+windrose  | 2026-04-21T22:42:08.951941682Z 	23454 22:42:08: 581/15973 Mb
+windrose  | 2026-04-21T22:42:08.951946346Z                              [D:\Source\Build\work\gameRepoCheckoutDir\Plugins\Tools\R5SystemResourceMonitor\Source\R5SystemResourceMonitor\Private\R5SystemResourcesSubsystem.cpp:346]
+windrose  | 2026-04-21T22:57:09.490628763Z [2026.04.21-22.57.09:489][738]R5LogSystemResources:         [747738] ...emResourcesSubsystem::ReportUsageHistoryList    
+windrose  | 2026-04-21T22:57:09.490677080Z Resource Usage History. Last 1 records:
+windrose  | 2026-04-21T22:57:09.490682914Z 	24336 22:57:09: 581/15973 Mb
+windrose  | 2026-04-21T22:57:09.490686850Z                              [D:\Source\Build\work\gameRepoCheckoutDir\Plugins\Tools\R5SystemResourceMonitor\Source\R5SystemResourceMonitor\Private\R5SystemResourcesSubsystem.cpp:346]
+windrose  | 2026-04-21T23:12:09.796480576Z [2026.04.21-23.12.09:795][805]R5LogSystemResources:         [774805] ...emResourcesSubsystem::ReportUsageHistoryList    
+windrose  | 2026-04-21T23:12:09.796519193Z Resource Usage History. Last 1 records:
+windrose  | 2026-04-21T23:12:09.796524369Z 	25216 23:12:09: 582/15973 Mb
+windrose  | 2026-04-21T23:12:09.796528072Z                              [D:\Source\Build\work\gameRepoCheckoutDir\Plugins\Tools\R5SystemResourceMonitor\Source\R5SystemResourceMonitor\Private\R5SystemResourcesSubsystem.cpp:346]
+windrose  | 2026-04-21T23:27:10.476612266Z [2026.04.21-23.27.10:471][ 43]R5LogSystemResources:         [802042] ...emResourcesSubsystem::ReportUsageHistoryList    
+windrose  | 2026-04-21T23:27:10.476646283Z Resource Usage History. Last 1 records:
+windrose  | 2026-04-21T23:27:10.476651362Z 	26099 23:27:10: 582/15973 Mb
+windrose  | 2026-04-21T23:27:10.476655242Z                              [D:\Source\Build\work\gameRepoCheckoutDir\Plugins\Tools\R5SystemResourceMonitor\Source\R5SystemResourceMonitor\Private\R5SystemResourcesSubsystem.cpp:346]
+windrose  | 2026-04-21T23:42:10.654246321Z [2026.04.21-23.42.10:653][293]R5LogSystemResources:         [829293] ...emResourcesSubsystem::ReportUsageHistoryList    
+windrose  | 2026-04-21T23:42:10.654291145Z Resource Usage History. Last 1 records:
+windrose  | 2026-04-21T23:42:10.654296105Z 	26982 23:42:10: 582/15973 Mb
+windrose  | 2026-04-21T23:42:10.654299688Z                              [D:\Source\Build\work\gameRepoCheckoutDir\Plugins\Tools\R5SystemResourceMonitor\Source\R5SystemResourceMonitor\Private\R5SystemResourcesSubsystem.cpp:346]
+windrose  | 2026-04-21T23:47:41.566413541Z [0;36m[windrose][0m Stopping Windrose dedicated server
+windrose  | 2026-04-21T23:47:41.620953934Z Terminated

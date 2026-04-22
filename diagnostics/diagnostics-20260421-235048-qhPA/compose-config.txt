@@ -1,0 +1,62 @@
+name: windrose
+services:
+  windrose:
+    container_name: windrose
+    environment:
+      CONTAINER_NAME: windrose
+      DISCORD_WEBHOOK_URL: ""
+      DISPLAY: :99
+      GENERATE_SETTINGS: "true"
+      GOTIFY_PRIORITY: "5"
+      GOTIFY_TOKEN: ""
+      GOTIFY_URL: ""
+      HOSTNAME: localhost
+      IMAGE_REPOSITORY: ghcr.io/uberdudepl/windrose-dedicated-server-docker
+      IMAGE_TAG: v1.3.1
+      INVITE_CODE: ub3rt3st
+      MAX_PLAYERS: "4"
+      MULTIHOME: 0.0.0.0
+      NOTIFY_PROVIDER: auto
+      P2P_PROXY_ADDRESS: 127.0.0.1
+      PGID: "1000"
+      PORT: "7777"
+      PUID: "1000"
+      QUERYPORT: "7778"
+      SERVER_NAME: Windrose Dev Server
+      SERVER_NOTE: Development container
+      SERVER_PASSWORD: ""
+      STEAM_LOGIN: anonymous
+      STEAM_PASS: ""
+      UPDATE_ON_START: "true"
+      WINDROSE_APP_ID: "4129620"
+      WINEARCH: win64
+      WINEDEBUG: -all
+      WINEPREFIX: /home/steam/.wine
+    hostname: localhost
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - /healthcheck.sh
+      timeout: 10s
+      interval: 30s
+      retries: 5
+      start_period: 5m0s
+    image: ghcr.io/uberdudepl/windrose-dedicated-server-docker:v1.3.1
+    logging:
+      driver: json-file
+      options:
+        max-file: "5"
+        max-size: 20m
+    network_mode: host
+    pull_policy: always
+    restart: unless-stopped
+    stop_grace_period: 1m30s
+    volumes:
+      - type: bind
+        source: /root/windrose/data
+        target: /data
+        bind: {}
+      - type: bind
+        source: /root/windrose/steam-home
+        target: /home/steam
+        bind: {}

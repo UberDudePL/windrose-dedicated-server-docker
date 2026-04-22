@@ -1,0 +1,7 @@
++ cd /root/windrose
++ docker compose -f docker-compose.yml logs --no-color --timestamps --tail 5 windrose
+windrose  | 2026-04-21T23:42:10.654291145Z Resource Usage History. Last 1 records:
+windrose  | 2026-04-21T23:42:10.654296105Z 	26982 23:42:10: 582/15973 Mb
+windrose  | 2026-04-21T23:42:10.654299688Z                              [D:\Source\Build\work\gameRepoCheckoutDir\Plugins\Tools\R5SystemResourceMonitor\Source\R5SystemResourceMonitor\Private\R5SystemResourcesSubsystem.cpp:346]
+windrose  | 2026-04-21T23:47:41.566413541Z [0;36m[windrose][0m Stopping Windrose dedicated server
+windrose  | 2026-04-21T23:47:41.620953934Z Terminated

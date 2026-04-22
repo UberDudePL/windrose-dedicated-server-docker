@@ -1,0 +1,117 @@
++ local min_ram_mb=8192
++ local min_disk_mb=8192
++ local total_ram_mb=0
++ local free_disk_mb=0
++ local disk_mount=unknown
++ local fail_count=0
++ local warn_count=0
++ local game_port query_port
++ local container_name health=unknown
++ log_info 'Running doctor checks (prod mode)'
++ echo -e '\033[0;36m[windrose]\033[0m Running doctor checks (prod mode)'
+[0;36m[windrose][0m Running doctor checks (prod mode)
++ command -v docker
++ log_ok 'Docker CLI is available'
++ echo -e '\033[0;32m[windrose]\033[0m Docker CLI is available'
+[0;32m[windrose][0m Docker CLI is available
++ docker compose version
++ log_ok 'Docker Compose v2 is available'
++ echo -e '\033[0;32m[windrose]\033[0m Docker Compose v2 is available'
+[0;32m[windrose][0m Docker Compose v2 is available
++ dc config -q
++ log_ok 'Compose configuration is valid'
++ echo -e '\033[0;32m[windrose]\033[0m Compose configuration is valid'
+[0;32m[windrose][0m Compose configuration is valid
++ [[ -r /proc/meminfo ]]
+++ awk '/^MemTotal:/ {printf "%d", $2/1024}' /proc/meminfo
++ total_ram_mb=15973
++ [[ 15973 =~ ^[0-9]+$ ]]
++ [[ 15973 -gt 0 ]]
++ [[ 15973 -lt 8192 ]]
++ log_ok 'Host RAM is 15973 MB'
++ echo -e '\033[0;32m[windrose]\033[0m Host RAM is 15973 MB'
+[0;32m[windrose][0m Host RAM is 15973 MB
++ read -r free_disk_mb disk_mount
+++ awk 'NR==2 {print $4, $6}'
+++ df -Pm /root/windrose
++ [[ 8174 =~ ^[0-9]+$ ]]
++ [[ 8174 -gt 0 ]]
++ [[ 8174 -lt 8192 ]]
++ log_error 'Free disk on / is 8174 MB (minimum 8192 MB)'
++ echo -e '\033[0;31m[windrose]\033[0m Free disk on / is 8174 MB (minimum 8192 MB)'
+[0;31m[windrose][0m Free disk on / is 8174 MB (minimum 8192 MB)
++ fail_count=1
++ [[ -d /root/windrose/data/R5 ]]
++ log_ok 'Save path exists: /root/windrose/data/R5'
++ echo -e '\033[0;32m[windrose]\033[0m Save path exists: /root/windrose/data/R5'
+[0;32m[windrose][0m Save path exists: /root/windrose/data/R5
++ [[ -d /root/windrose/data ]]
++ [[ -w /root/windrose/data ]]
++ log_ok 'Data path is writable: /root/windrose/data'
++ echo -e '\033[0;32m[windrose]\033[0m Data path is writable: /root/windrose/data'
+[0;32m[windrose][0m Data path is writable: /root/windrose/data
+++ dotenv_value CONTAINER_NAME
+++ local key=CONTAINER_NAME
+++ local env_file=/root/windrose/.env
+++ [[ ! -f /root/windrose/.env ]]
+++ tail -n 1
+++ awk -F= -v key=CONTAINER_NAME '$1 == key {sub(/^[^=]*=/, "", $0); print $0}' /root/windrose/.env
++ container_name=windrose
++ container_name=windrose
++ server_is_running
++ dc ps --status running --services
++ grep -Fx windrose
++ log_warn 'Service is not running: windrose'
++ echo -e '\033[1;33m[windrose]\033[0m Service is not running: windrose'
+[1;33m[windrose][0m Service is not running: windrose
++ warn_count=1
+++ dotenv_value PORT
+++ local key=PORT
+++ local env_file=/root/windrose/.env
+++ [[ ! -f /root/windrose/.env ]]
+++ tail -n 1
+++ awk -F= -v key=PORT '$1 == key {sub(/^[^=]*=/, "", $0); print $0}' /root/windrose/.env
++ game_port=7777
+++ dotenv_value QUERYPORT
+++ local key=QUERYPORT
+++ local env_file=/root/windrose/.env
+++ [[ ! -f /root/windrose/.env ]]
+++ tail -n 1
+++ awk -F= -v key=QUERYPORT '$1 == key {sub(/^[^=]*=/, "", $0); print $0}' /root/windrose/.env
++ query_port=7778
++ game_port=7777
++ query_port=7778
++ port_is_in_use 7777
++ local port=7777
++ command -v ss
++ ss -H -lntu
++ awk '{print $5}'
++ grep -E '(^|[:\]])7777$'
++ server_is_running
++ grep -Fx windrose
++ dc ps --status running --services
++ log_ok 'PORT 7777 is free'
++ echo -e '\033[0;32m[windrose]\033[0m PORT 7777 is free'
+[0;32m[windrose][0m PORT 7777 is free
++ port_is_in_use 7778
++ local port=7778
++ command -v ss
++ awk '{print $5}'
++ grep -E '(^|[:\]])7778$'
++ ss -H -lntu
++ server_is_running
++ grep -Fx windrose
++ dc ps --status running --services
++ log_ok 'QUERYPORT 7778 is free'
++ echo -e '\033[0;32m[windrose]\033[0m QUERYPORT 7778 is free'
+[0;32m[windrose][0m QUERYPORT 7778 is free
++ log_info 'Doctor summary: fails=1, warnings=1'
++ echo -e '\033[0;36m[windrose]\033[0m Doctor summary: fails=1, warnings=1'
+[0;36m[windrose][0m Doctor summary: fails=1, warnings=1
++ [[ 1 -gt 0 ]]
++ log_error 'Doctor checks failed. Fix errors above and run ./serverctl.sh doctor again.'
++ echo -e '\033[0;31m[windrose]\033[0m Doctor checks failed. Fix errors above and run ./serverctl.sh doctor again.'
+[0;31m[windrose][0m Doctor checks failed. Fix errors above and run ./serverctl.sh doctor again.
++ exit 1
++ release_mutation_lock
++ [[ false == \t\r\u\e ]]

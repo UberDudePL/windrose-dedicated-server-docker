@@ -1,6 +1,6 @@
 services:
   windrose:
-    image: ${IMAGE_REPOSITORY:-ghcr.io/uberdudepl/windrose-dedicated-server-docker}:${IMAGE_TAG:-v1.3.3}
+    image: ${IMAGE_REPOSITORY:-ghcr.io/uberdudepl/windrose-dedicated-server-docker}:${IMAGE_TAG:-v1.4.0}
     pull_policy: always
     container_name: ${CONTAINER_NAME:-windrose}
     hostname: ${HOSTNAME:-localhost}
