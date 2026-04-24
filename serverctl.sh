@@ -1675,6 +1675,8 @@ backup_server() {
   local was_running=""
   local backup_exit=0
   local notify_success notify_fail
+  local backup_dir
+  local discord_upload_note="discord-upload=disabled"
 
   notify_success="${BACKUP_NOTIFY_SUCCESS:-$(dotenv_value BACKUP_NOTIFY_SUCCESS || true)}"
   notify_fail="${BACKUP_NOTIFY_FAIL:-$(dotenv_value BACKUP_NOTIFY_FAIL || true)}"
@@ -1688,6 +1690,12 @@ backup_server() {
   backup_scope="${BACKUP_SCOPE:-$(dotenv_value BACKUP_SCOPE || true)}"
   backup_scope="${backup_scope:-full}"
 
+  backup_dir="${BACKUP_DIR:-$(dotenv_value BACKUP_DIR || true)}"
+  backup_dir="${backup_dir:-$SCRIPT_DIR/backups}"
+  if [[ "$backup_dir" != /* ]]; then
+    backup_dir="$SCRIPT_DIR/$backup_dir"
+  fi
+
   local scope_label
   case "$backup_scope" in
   full) scope_label="full backup" ;;
@@ -1695,6 +1703,14 @@ backup_server() {
   both) scope_label="full + save backup" ;;
   *) scope_label="backup" ;;
   esac
+
+  if [[ "$discord_upload" == "true" ]]; then
+    if [[ "$backup_scope" == "full" ]]; then
+      discord_upload_note="discord-upload=enabled, skipped for scope=full"
+    else
+      discord_upload_note="discord-upload=enabled"
+    fi
+  fi
 
   if dc ps --status running --services 2>/dev/null | grep -Fx "$SERVICE_NAME" >/dev/null 2>&1; then
     was_running="yes"
@@ -1728,7 +1744,7 @@ backup_server() {
   fi
 
   if [[ "$backup_exit" -eq 0 && "$notify_success" == "true" ]]; then
-    "$SCRIPT_DIR/notify.sh" test "⚓ Windrose backup finished successfully on $(hostname -s)." >/dev/null 2>&1 || true
+    "$SCRIPT_DIR/notify.sh" test "⚓ Windrose backup finished successfully on $(hostname -s). scope=$backup_scope dir=$backup_dir $discord_upload_note" >/dev/null 2>&1 || true
   fi
 
   if [[ "$backup_exit" -eq 0 && "$discord_upload" == "true" ]]; then
@@ -1736,7 +1752,7 @@ backup_server() {
   fi
 
   if [[ "$backup_exit" -ne 0 && "$notify_fail" == "true" ]]; then
-    "$SCRIPT_DIR/notify.sh" test "⚓ Windrose backup failed on $(hostname -s) (exit=$backup_exit)." >/dev/null 2>&1 || true
+    "$SCRIPT_DIR/notify.sh" test "⚓ Windrose backup failed on $(hostname -s) (exit=$backup_exit). scope=$backup_scope dir=$backup_dir $discord_upload_note" >/dev/null 2>&1 || true
   fi
 
   return "$backup_exit"
@@ -1753,6 +1769,9 @@ upload_backup_to_discord() {
 
   backup_dir="${BACKUP_DIR:-$(dotenv_value BACKUP_DIR || true)}"
   backup_dir="${backup_dir:-$SCRIPT_DIR/backups}"
+  if [[ "$backup_dir" != /* ]]; then
+    backup_dir="$SCRIPT_DIR/$backup_dir"
+  fi
 
   backup_scope="${BACKUP_SCOPE:-$(dotenv_value BACKUP_SCOPE || true)}"
   backup_scope="${backup_scope:-full}"
