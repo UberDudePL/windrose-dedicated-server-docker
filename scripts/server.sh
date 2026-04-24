@@ -105,15 +105,23 @@ patch_server_config() {
   fi
 
   log_info "Patching ServerDescription.json from environment"
-  tr -d '\r' < "$SERVER_DESC" | jq \
+  tr -d '\r' <"$SERVER_DESC" | jq \
     --arg invite "$INVITE_CODE" \
     --arg name "$SERVER_NAME" \
     --arg note "$SERVER_NOTE" \
     --arg password "$SERVER_PASSWORD" \
     --arg proxy "$P2P_PROXY_ADDRESS" \
+    --argjson directconn "${USE_DIRECT_CONNECTION:-false}" \
+    --argjson dcport "${DIRECT_CONNECTION_SERVER_PORT:-7777}" \
+    --arg dcproxy "${DIRECT_CONNECTION_PROXY_ADDRESS:-0.0.0.0}" \
+    --arg region "${USER_SELECTED_REGION:-}" \
     --argjson maxplayers "$MAX_PLAYERS" \
     '
     .ServerDescription_Persistent.P2pProxyAddress = $proxy |
+    .ServerDescription_Persistent.UseDirectConnection = $directconn |
+    .ServerDescription_Persistent.DirectConnectionServerPort = $dcport |
+    .ServerDescription_Persistent.DirectConnectionProxyAddress = $dcproxy |
+    if $region != "" then .ServerDescription_Persistent.UserSelectedRegion = $region else . end |
     if $invite != "" then .ServerDescription_Persistent.InviteCode = $invite else . end |
     if $name != "" then .ServerDescription_Persistent.ServerName = $name else . end |
     if $note != "" then .ServerDescription_Persistent.Note = $note else . end |
@@ -125,7 +133,7 @@ patch_server_config() {
       .ServerDescription_Persistent.Password = ""
     end |
     .ServerDescription_Persistent.MaxPlayerCount = $maxplayers
-    ' > "$SERVER_DESC.tmp"
+    ' >"$SERVER_DESC.tmp"
 
   mv "$SERVER_DESC.tmp" "$SERVER_DESC"
   chown steam:steam "$SERVER_DESC" 2>/dev/null || true

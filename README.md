@@ -213,7 +213,12 @@ SERVER_NAME=                 # Optional server name
 SERVER_NOTE=                 # Optional public server note/description
 SERVER_PASSWORD=             # Optional password
 MAX_PLAYERS=4                # Recommended for stability
-P2P_PROXY_ADDRESS=127.0.0.1  # Keep default unless you know you need a change
+P2P_PROXY_ADDRESS=127.0.0.1  # Keep default unless players connect over LAN
+# Direct connection (alternative to invite code, requires port forwarding)
+USE_DIRECT_CONNECTION=false
+DIRECT_CONNECTION_SERVER_PORT=7777
+DIRECT_CONNECTION_PROXY_ADDRESS=0.0.0.0
+USER_SELECTED_REGION=        # Leave empty for auto-detect (SEA, CIS, EU)
 PORT=7777
 QUERYPORT=7778
 MULTIHOME=0.0.0.0
@@ -221,26 +226,30 @@ MULTIHOME=0.0.0.0
 
 ### `docker-compose.yml` overrides
 
-| Variable            | Default     | Description                                                                                                                |
-| ------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `CONTAINER_NAME`    | `windrose`  | Change only if you run more than one server on the same host                                                               |
-| `HOSTNAME`          | `localhost` | Internal container hostname used by ICE candidate discovery; keep `localhost` unless custom name resolves inside container |
-| `IMAGE_REPOSITORY`  | GHCR repo   | Published image repository                                                                                                 |
-| `IMAGE_TAG`         | `v1.4.2`    | Stable image tag to run                                                                                                    |
-| `PUID`              | `1000`      | User id used for mounted files                                                                                             |
-| `PGID`              | `1000`      | Group id used for mounted files                                                                                            |
-| `UPDATE_ON_START`   | `true`      | Update and validate server files on startup                                                                                |
-| `GENERATE_SETTINGS` | `true`      | Auto-patch `ServerDescription.json` from env values                                                                        |
-| `INVITE_CODE`       | empty       | Invite code shown to players                                                                                               |
-| `SERVER_NAME`       | empty       | Display name of the server                                                                                                 |
-| `SERVER_NOTE`       | empty       | Short public server note/description                                                                                       |
-| `SERVER_PASSWORD`   | empty       | Leave empty for a public server                                                                                            |
-| `MAX_PLAYERS`       | `4`         | Maximum number of simultaneous players                                                                                     |
-| `P2P_PROXY_ADDRESS` | `127.0.0.1` | Internal socket proxy address                                                                                              |
-| `PORT`              | `7777`      | Game port (UDP)                                                                                                            |
-| `QUERYPORT`         | `7778`      | Query port (UDP)                                                                                                           |
-| `WINDROSE_APP_ID`   | `4129620`   | Steam AppID                                                                                                                |
-| `STEAM_LOGIN`       | `anonymous` | SteamCMD login                                                                                                             |
+| Variable                          | Default     | Description                                                                                                                |
+| --------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `CONTAINER_NAME`                  | `windrose`  | Change only if you run more than one server on the same host                                                               |
+| `HOSTNAME`                        | `localhost` | Internal container hostname used by ICE candidate discovery; keep `localhost` unless custom name resolves inside container |
+| `IMAGE_REPOSITORY`                | GHCR repo   | Published image repository                                                                                                 |
+| `IMAGE_TAG`                       | `v1.4.2`    | Stable image tag to run                                                                                                    |
+| `PUID`                            | `1000`      | User id used for mounted files                                                                                             |
+| `PGID`                            | `1000`      | Group id used for mounted files                                                                                            |
+| `UPDATE_ON_START`                 | `true`      | Update and validate server files on startup                                                                                |
+| `GENERATE_SETTINGS`               | `true`      | Auto-patch `ServerDescription.json` from env values                                                                        |
+| `INVITE_CODE`                     | empty       | Invite code shown to players. Leave empty to use direct connection instead                                                 |
+| `SERVER_NAME`                     | empty       | Display name of the server                                                                                                 |
+| `SERVER_NOTE`                     | empty       | Short public server note/description                                                                                       |
+| `SERVER_PASSWORD`                 | empty       | Leave empty for a public server                                                                                            |
+| `MAX_PLAYERS`                     | `4`         | Maximum number of simultaneous players                                                                                     |
+| `P2P_PROXY_ADDRESS`               | `127.0.0.1` | Internal socket proxy address. Change to LAN IP if players connect from the same network                                   |
+| `USE_DIRECT_CONNECTION`           | `false`     | Set to `true` to allow players to connect directly via IP instead of invite code. Requires port forwarding.                |
+| `DIRECT_CONNECTION_SERVER_PORT`   | `7777`      | TCP port used for direct connection. Only applies when `USE_DIRECT_CONNECTION=true`                                        |
+| `DIRECT_CONNECTION_PROXY_ADDRESS` | `0.0.0.0`   | Proxy address for direct connection. Only applies when `USE_DIRECT_CONNECTION=true`                                        |
+| `USER_SELECTED_REGION`            | empty       | Connection service region: `SEA`, `CIS`, `EU`. Leave empty to auto-detect                                                  |
+| `PORT`                            | `7777`      | Game port (UDP)                                                                                                            |
+| `QUERYPORT`                       | `7778`      | Query port (UDP)                                                                                                           |
+| `WINDROSE_APP_ID`                 | `4129620`   | Steam AppID                                                                                                                |
+| `STEAM_LOGIN`                     | `anonymous` | SteamCMD login                                                                                                             |
 
 ---
 
