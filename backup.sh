@@ -57,25 +57,24 @@ BACKUP_SCOPE="${BACKUP_SCOPE:-full}"
 TIMESTAMP="$(date +%F-%H%M%S)"
 
 case "$BACKUP_FORMAT" in
-  tar.gz)
-    ARCHIVE_EXT="tar.gz"
-    ;;
-  zip)
-    ARCHIVE_EXT="zip"
-    ;;
-  *)
-    log_error "unsupported BACKUP_FORMAT '$BACKUP_FORMAT' (supported: tar.gz, zip)"
-    exit 1
-    ;;
+tar.gz)
+  ARCHIVE_EXT="tar.gz"
+  ;;
+zip)
+  ARCHIVE_EXT="zip"
+  ;;
+*)
+  log_error "unsupported BACKUP_FORMAT '$BACKUP_FORMAT' (supported: tar.gz, zip)"
+  exit 1
+  ;;
 esac
 
 case "$BACKUP_SCOPE" in
-  full|save|both)
-    ;;
-  *)
-    log_error "unsupported BACKUP_SCOPE '$BACKUP_SCOPE' (supported: full, save, both)"
-    exit 1
-    ;;
+full | save | both) ;;
+*)
+  log_error "unsupported BACKUP_SCOPE '$BACKUP_SCOPE' (supported: full, save, both)"
+  exit 1
+  ;;
 esac
 
 run_quiet() {
@@ -159,22 +158,22 @@ ensure_zip_available() {
 
   read -r -p "$(prompt_text "zip command not found. Install it now? ${_COLOR_YELLOW}[y/N]${_COLOR_RESET}: ")" answer
   case "$answer" in
-    y|Y|yes|YES)
-      log_info "Installing zip package..."
-      if ! install_zip_package; then
-        log_error "failed to install zip package."
-        return 1
-      fi
-      if ! command -v zip >/dev/null 2>&1; then
-        log_error "zip command still not available after installation."
-        return 1
-      fi
-      log_ok "zip package installed successfully."
-      ;;
-    *)
-      log_error "zip is required for BACKUP_FORMAT=zip. Install zip or set BACKUP_FORMAT=tar.gz"
+  y | Y | yes | YES)
+    log_info "Installing zip package..."
+    if ! install_zip_package; then
+      log_error "failed to install zip package."
       return 1
-      ;;
+    fi
+    if ! command -v zip >/dev/null 2>&1; then
+      log_error "zip command still not available after installation."
+      return 1
+    fi
+    log_ok "zip package installed successfully."
+    ;;
+  *)
+    log_error "zip is required for BACKUP_FORMAT=zip. Install zip or set BACKUP_FORMAT=tar.gz"
+    return 1
+    ;;
   esac
 }
 

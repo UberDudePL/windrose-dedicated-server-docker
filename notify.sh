@@ -63,7 +63,7 @@ load_env_file() {
 
     printf -v "$key" '%s' "$value"
     export "${key?}"
-  done < "$ENV_FILE"
+  done <"$ENV_FILE"
 }
 
 load_env_file
@@ -76,7 +76,7 @@ load_identity_map() {
     value="$(trim "${value:-}")"
     [[ -z "$key" || -z "$value" ]] && continue
     PLAYER_NAMES["$key"]="$value"
-  done < "$IDENTITY_MAP_FILE"
+  done <"$IDENTITY_MAP_FILE"
 }
 
 persist_identity_map() {
@@ -86,14 +86,14 @@ persist_identity_map() {
   dir="$(dirname "$IDENTITY_MAP_FILE")"
   mkdir -p "$dir"
 
-  : > "$IDENTITY_MAP_FILE.tmp"
+  : >"$IDENTITY_MAP_FILE.tmp"
   for key in "${!PLAYER_NAMES[@]}"; do
     [[ -z "$key" ]] && continue
     [[ -z "${PLAYER_NAMES[$key]}" ]] && continue
-    printf '%s\t%s\n' "$key" "${PLAYER_NAMES[$key]}" >> "$IDENTITY_MAP_FILE.tmp"
+    printf '%s\t%s\n' "$key" "${PLAYER_NAMES[$key]}" >>"$IDENTITY_MAP_FILE.tmp"
   done
 
-  sort -t $'\t' -k1,1 "$IDENTITY_MAP_FILE.tmp" > "$IDENTITY_MAP_FILE"
+  sort -t $'\t' -k1,1 "$IDENTITY_MAP_FILE.tmp" >"$IDENTITY_MAP_FILE"
   rm -f "$IDENTITY_MAP_FILE.tmp"
 }
 
@@ -119,7 +119,7 @@ EOF
 
 init_docker_cmd() {
   if [[ -n "$DOCKER_BIN" ]]; then
-    read -r -a DOCKER_CMD <<< "$DOCKER_BIN"
+    read -r -a DOCKER_CMD <<<"$DOCKER_BIN"
     return
   fi
 
@@ -183,32 +183,32 @@ send_notification() {
   provider="$(resolve_provider)"
 
   case "$provider" in
-    discord)
-      send_discord "$content" || echo "[notify] Failed to send Discord notification" >&2
-      ;;
-    gotify)
-      send_gotify "$content" || echo "[notify] Failed to send Gotify notification" >&2
-      ;;
-    both)
-      if send_discord "$content"; then
-        sent=true
-      else
-        echo "[notify] Failed to send Discord notification" >&2
-      fi
+  discord)
+    send_discord "$content" || echo "[notify] Failed to send Discord notification" >&2
+    ;;
+  gotify)
+    send_gotify "$content" || echo "[notify] Failed to send Gotify notification" >&2
+    ;;
+  both)
+    if send_discord "$content"; then
+      sent=true
+    else
+      echo "[notify] Failed to send Discord notification" >&2
+    fi
 
-      if send_gotify "$content"; then
-        sent=true
-      else
-        echo "[notify] Failed to send Gotify notification" >&2
-      fi
+    if send_gotify "$content"; then
+      sent=true
+    else
+      echo "[notify] Failed to send Gotify notification" >&2
+    fi
 
-      if [[ "$sent" != "true" ]]; then
-        echo "[notify] Failed to send notification via both backends" >&2
-      fi
-      ;;
-    *)
-      echo "[notify] No notification backend configured; event: $content"
-      ;;
+    if [[ "$sent" != "true" ]]; then
+      echo "[notify] Failed to send notification via both backends" >&2
+    fi
+    ;;
+  *)
+    echo "[notify] No notification backend configured; event: $content"
+    ;;
   esac
 }
 
@@ -221,33 +221,33 @@ test_notification() {
   echo "[notify] Sending test notification via $provider..."
 
   case "$provider" in
-    discord)
-      send_discord "$message"
-      ;;
-    gotify)
-      send_gotify "$message"
-      ;;
-    both)
-      if send_discord "$message"; then
-        sent=true
-      else
-        echo "[notify] Failed to send Discord notification" >&2
-      fi
+  discord)
+    send_discord "$message"
+    ;;
+  gotify)
+    send_gotify "$message"
+    ;;
+  both)
+    if send_discord "$message"; then
+      sent=true
+    else
+      echo "[notify] Failed to send Discord notification" >&2
+    fi
 
-      if send_gotify "$message"; then
-        sent=true
-      else
-        echo "[notify] Failed to send Gotify notification" >&2
-      fi
+    if send_gotify "$message"; then
+      sent=true
+    else
+      echo "[notify] Failed to send Gotify notification" >&2
+    fi
 
-      if [[ "$sent" != "true" ]]; then
-        return 1
-      fi
-      ;;
-    *)
-      echo "[notify] No notification backend configured."
+    if [[ "$sent" != "true" ]]; then
       return 1
-      ;;
+    fi
+    ;;
+  *)
+    echo "[notify] No notification backend configured."
+    return 1
+    ;;
   esac
 
   echo "[notify] Test notification sent successfully."
@@ -370,7 +370,7 @@ should_send_event() {
   now=$(date +%s)
   last="${RECENT_EVENTS[$key]:-0}"
 
-  if (( now - last < NOTIFY_DEDUPE_WINDOW )); then
+  if ((now - last < NOTIFY_DEDUPE_WINDOW)); then
     return 1
   fi
 

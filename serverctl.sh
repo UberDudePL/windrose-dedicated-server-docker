@@ -2,16 +2,16 @@
 set -euo pipefail
 
 resolve_script_dir() {
-	local src="${BASH_SOURCE[0]}"
+  local src="${BASH_SOURCE[0]}"
 
-	while [[ -L "$src" ]]; do
-		local dir
-		dir="$(cd -P -- "$(dirname -- "$src")" && pwd)"
-		src="$(readlink "$src")"
-		[[ "$src" != /* ]] && src="$dir/$src"
-	done
+  while [[ -L "$src" ]]; do
+    local dir
+    dir="$(cd -P -- "$(dirname -- "$src")" && pwd)"
+    src="$(readlink "$src")"
+    [[ "$src" != /* ]] && src="$dir/$src"
+  done
 
-	cd -P -- "$(dirname -- "$src")" && pwd
+  cd -P -- "$(dirname -- "$src")" && pwd
 }
 
 SCRIPT_DIR="$(resolve_script_dir)"
@@ -38,143 +38,143 @@ _COLOR_YELLOW='\033[1;33m'
 _COLOR_RED='\033[0;31m'
 
 log_info() {
-	echo -e "${_COLOR_CYAN}[windrose]${_COLOR_RESET} $*"
+  echo -e "${_COLOR_CYAN}[windrose]${_COLOR_RESET} $*"
 }
 
 log_ok() {
-	echo -e "${_COLOR_GREEN}[windrose]${_COLOR_RESET} $*"
+  echo -e "${_COLOR_GREEN}[windrose]${_COLOR_RESET} $*"
 }
 
 log_warn() {
-	echo -e "${_COLOR_YELLOW}[windrose]${_COLOR_RESET} $*"
+  echo -e "${_COLOR_YELLOW}[windrose]${_COLOR_RESET} $*"
 }
 
 log_error() {
-	echo -e "${_COLOR_RED}[windrose]${_COLOR_RESET} $*"
+  echo -e "${_COLOR_RED}[windrose]${_COLOR_RESET} $*"
 }
 
 prompt_text() {
-	printf '%b' "${_COLOR_YELLOW}[windrose]${_COLOR_RESET} $1"
+  printf '%b' "${_COLOR_YELLOW}[windrose]${_COLOR_RESET} $1"
 }
 
 log_step() {
-	echo -ne "${_COLOR_CYAN}[windrose]${_COLOR_RESET} $1..."
+  echo -ne "${_COLOR_CYAN}[windrose]${_COLOR_RESET} $1..."
 }
 
 log_step_done() {
-	echo -e " ${_COLOR_GREEN}DONE${_COLOR_RESET}"
+  echo -e " ${_COLOR_GREEN}DONE${_COLOR_RESET}"
 }
 
 log_step_failed() {
-	echo -e " ${_COLOR_RED}FAILED${_COLOR_RESET}"
+  echo -e " ${_COLOR_RED}FAILED${_COLOR_RESET}"
 }
 
 log_step_pending() {
-	echo -e " ${_COLOR_YELLOW}PENDING${_COLOR_RESET}"
+  echo -e " ${_COLOR_YELLOW}PENDING${_COLOR_RESET}"
 }
 
 render_progress_bar() {
-	local percent="$1"
-	local width=30
-	local filled empty
-	local filled_bar empty_bar
+  local percent="$1"
+  local width=30
+  local filled empty
+  local filled_bar empty_bar
 
-	filled=$((percent * width / 100))
-	empty=$((width - filled))
+  filled=$((percent * width / 100))
+  empty=$((width - filled))
 
-	filled_bar="$(printf '%*s' "$filled" '' | tr ' ' '#')"
-	empty_bar="$(printf '%*s' "$empty" '' | tr ' ' '-')"
+  filled_bar="$(printf '%*s' "$filled" '' | tr ' ' '#')"
+  empty_bar="$(printf '%*s' "$empty" '' | tr ' ' '-')"
 
-	printf '\r[windrose] Update progress [%s%s] %3d%%' "$filled_bar" "$empty_bar" "$percent"
-	if [[ "$percent" -ge 100 ]]; then
-		printf '\n'
-	fi
+  printf '\r[windrose] Update progress [%s%s] %3d%%' "$filled_bar" "$empty_bar" "$percent"
+  if [[ "$percent" -ge 100 ]]; then
+    printf '\n'
+  fi
 }
 
 rotate_update_logs() {
-	rm -f "$UPDATE_LOG_FILE.3"
-	[[ -f "$UPDATE_LOG_FILE.2" ]] && mv "$UPDATE_LOG_FILE.2" "$UPDATE_LOG_FILE.3"
-	[[ -f "$UPDATE_LOG_FILE.1" ]] && mv "$UPDATE_LOG_FILE.1" "$UPDATE_LOG_FILE.2"
-	[[ -f "$UPDATE_LOG_FILE" ]] && mv "$UPDATE_LOG_FILE" "$UPDATE_LOG_FILE.1"
-	return 0
+  rm -f "$UPDATE_LOG_FILE.3"
+  [[ -f "$UPDATE_LOG_FILE.2" ]] && mv "$UPDATE_LOG_FILE.2" "$UPDATE_LOG_FILE.3"
+  [[ -f "$UPDATE_LOG_FILE.1" ]] && mv "$UPDATE_LOG_FILE.1" "$UPDATE_LOG_FILE.2"
+  [[ -f "$UPDATE_LOG_FILE" ]] && mv "$UPDATE_LOG_FILE" "$UPDATE_LOG_FILE.1"
+  return 0
 }
 
 append_update_log() {
-	printf '[%s] %s\n' "$(date -Ins)" "$*" >>"$UPDATE_LOG_FILE"
+  printf '[%s] %s\n' "$(date -Ins)" "$*" >>"$UPDATE_LOG_FILE"
 }
 
 is_utf8_locale() {
-	local active_locale="${LC_ALL:-${LC_CTYPE:-${LANG:-}}}"
-	[[ "${active_locale,,}" == *"utf-8"* || "${active_locale,,}" == *"utf8"* ]]
+  local active_locale="${LC_ALL:-${LC_CTYPE:-${LANG:-}}}"
+  [[ "${active_locale,,}" == *"utf-8"* || "${active_locale,,}" == *"utf8"* ]]
 }
 
 init_docker_cmd() {
-	if ! command -v docker >/dev/null 2>&1; then
-		echo "[windrose] Error: docker is not installed or not in PATH."
-		exit 1
-	fi
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "[windrose] Error: docker is not installed or not in PATH."
+    exit 1
+  fi
 
-	if [[ -n "$DOCKER_BIN" ]]; then
-		read -r -a DOCKER_CMD <<<"$DOCKER_BIN"
-		return
-	fi
+  if [[ -n "$DOCKER_BIN" ]]; then
+    read -r -a DOCKER_CMD <<<"$DOCKER_BIN"
+    return
+  fi
 
-	if docker info >/dev/null 2>&1; then
-		DOCKER_CMD=(docker)
-	elif command -v sudo >/dev/null 2>&1; then
-		DOCKER_CMD=(sudo docker)
-	else
-		echo "[windrose] Error: docker needs elevated permissions and sudo is not available."
-		echo "[windrose] Try running with: DOCKER_BIN='sudo docker' ./$SELF_NAME status"
-		exit 1
-	fi
+  if docker info >/dev/null 2>&1; then
+    DOCKER_CMD=(docker)
+  elif command -v sudo >/dev/null 2>&1; then
+    DOCKER_CMD=(sudo docker)
+  else
+    echo "[windrose] Error: docker needs elevated permissions and sudo is not available."
+    echo "[windrose] Try running with: DOCKER_BIN='sudo docker' ./$SELF_NAME status"
+    exit 1
+  fi
 }
 
 require_tools() {
-	if [[ ! -f "$COMPOSE_DIR/docker-compose.yml" ]]; then
-		echo "[windrose] Error: docker-compose.yml not found in $COMPOSE_DIR"
-		exit 1
-	fi
+  if [[ ! -f "$COMPOSE_DIR/docker-compose.yml" ]]; then
+    echo "[windrose] Error: docker-compose.yml not found in $COMPOSE_DIR"
+    exit 1
+  fi
 }
 
 dotenv_value() {
-	local key="$1"
-	local env_file="$SCRIPT_DIR/.env"
+  local key="$1"
+  local env_file="$SCRIPT_DIR/.env"
 
-	if [[ ! -f "$env_file" ]]; then
-		return 1
-	fi
+  if [[ ! -f "$env_file" ]]; then
+    return 1
+  fi
 
-	awk -F= -v key="$key" '$1 == key {sub(/^[^=]*=/, "", $0); print $0}' "$env_file" | tail -n 1
+  awk -F= -v key="$key" '$1 == key {sub(/^[^=]*=/, "", $0); print $0}' "$env_file" | tail -n 1
 }
 
 detect_mode() {
-	if [[ "$MODE" == "auto" ]]; then
-		if [[ -f "$COMPOSE_DIR/docker-compose.dev.yml" && "${COMPOSE_DIR##*/}" == *dev* ]]; then
-			echo "dev"
-		else
-			echo "prod"
-		fi
-	else
-		echo "$MODE"
-	fi
+  if [[ "$MODE" == "auto" ]]; then
+    if [[ -f "$COMPOSE_DIR/docker-compose.dev.yml" && "${COMPOSE_DIR##*/}" == *dev* ]]; then
+      echo "dev"
+    else
+      echo "prod"
+    fi
+  else
+    echo "$MODE"
+  fi
 }
 
 ACTIVE_MODE="$(detect_mode)"
 COMPOSE_FILES=(-f docker-compose.yml)
 if [[ "$ACTIVE_MODE" == "dev" && -f "$COMPOSE_DIR/docker-compose.dev.yml" ]]; then
-	COMPOSE_FILES+=(-f docker-compose.dev.yml)
+  COMPOSE_FILES+=(-f docker-compose.dev.yml)
 fi
 
 dc() {
-	(
-		cd "$COMPOSE_DIR"
-		"${DOCKER_CMD[@]}" compose "${COMPOSE_FILES[@]}" "$@"
-	)
+  (
+    cd "$COMPOSE_DIR"
+    "${DOCKER_CMD[@]}" compose "${COMPOSE_FILES[@]}" "$@"
+  )
 }
 
 usage() {
-	cat <<EOF
+  cat <<EOF
 Windrose helper script
 
 Usage:
@@ -211,596 +211,596 @@ EOF
 }
 
 acquire_mutation_lock() {
-	local op="$1"
-	local now
+  local op="$1"
+  local now
 
-	mkdir -p "$(dirname "$MUTATION_LOCK_DIR")"
-	now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  mkdir -p "$(dirname "$MUTATION_LOCK_DIR")"
+  now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-	if mkdir "$MUTATION_LOCK_DIR" 2>/dev/null; then
-		{
-			echo "pid=$$"
-			echo "op=$op"
-			echo "started_at=$now"
-		} >"$MUTATION_LOCK_META"
-		MUTATION_LOCK_HELD="true"
-		return 0
-	fi
+  if mkdir "$MUTATION_LOCK_DIR" 2>/dev/null; then
+    {
+      echo "pid=$$"
+      echo "op=$op"
+      echo "started_at=$now"
+    } >"$MUTATION_LOCK_META"
+    MUTATION_LOCK_HELD="true"
+    return 0
+  fi
 
-	log_error "Another state-changing operation is already in progress."
-	if [[ -f "$MUTATION_LOCK_META" ]]; then
-		log_info "Current lock metadata:"
-		sed 's/^/  /' "$MUTATION_LOCK_META"
-	fi
-	log_info "Wait for it to finish, then retry: ./$SELF_NAME $op"
-	exit 1
+  log_error "Another state-changing operation is already in progress."
+  if [[ -f "$MUTATION_LOCK_META" ]]; then
+    log_info "Current lock metadata:"
+    sed 's/^/  /' "$MUTATION_LOCK_META"
+  fi
+  log_info "Wait for it to finish, then retry: ./$SELF_NAME $op"
+  exit 1
 }
 
 release_mutation_lock() {
-	if [[ "$MUTATION_LOCK_HELD" == "true" ]]; then
-		rm -rf "$MUTATION_LOCK_DIR"
-		MUTATION_LOCK_HELD="false"
-	fi
+  if [[ "$MUTATION_LOCK_HELD" == "true" ]]; then
+    rm -rf "$MUTATION_LOCK_DIR"
+    MUTATION_LOCK_HELD="false"
+  fi
 }
 
 is_mutating_command() {
-	local cmd="$1"
+  local cmd="$1"
 
-	case "$cmd" in
-	setup | start | stop | restart | switch | backup | install-backup-cron | pull | update | down)
-		return 0
-		;;
-	*)
-		return 1
-		;;
-	esac
+  case "$cmd" in
+  setup | start | stop | restart | switch | backup | install-backup-cron | pull | update | down)
+    return 0
+    ;;
+  *)
+    return 1
+    ;;
+  esac
 }
 
 start_server() {
-	log_step "Starting server ($ACTIVE_MODE mode)"
-	if ! dc up -d >/dev/null 2>&1; then
-		log_step_failed
-		log_error "Failed to start server."
-		exit 1
-	fi
-	log_step_done
+  log_step "Starting server ($ACTIVE_MODE mode)"
+  if ! dc up -d >/dev/null 2>&1; then
+    log_step_failed
+    log_error "Failed to start server."
+    exit 1
+  fi
+  log_step_done
 }
 
 stop_server() {
-	log_step "Stopping server"
-	if ! dc stop "$SERVICE_NAME" >/dev/null 2>&1; then
-		log_step_failed
-		log_error "Failed to stop server."
-		exit 1
-	fi
-	log_step_done
+  log_step "Stopping server"
+  if ! dc stop "$SERVICE_NAME" >/dev/null 2>&1; then
+    log_step_failed
+    log_error "Failed to stop server."
+    exit 1
+  fi
+  log_step_done
 }
 
 server_is_running() {
-	dc ps --status running --services 2>/dev/null | grep -Fx "$SERVICE_NAME" >/dev/null 2>&1
+  dc ps --status running --services 2>/dev/null | grep -Fx "$SERVICE_NAME" >/dev/null 2>&1
 }
 
 require_jq() {
-	if ! command -v jq >/dev/null 2>&1; then
-		log_error "jq is required for world switching. Install jq on the host and try again."
-		exit 1
-	fi
+  if ! command -v jq >/dev/null 2>&1; then
+    log_error "jq is required for world switching. Install jq on the host and try again."
+    exit 1
+  fi
 }
 
 detect_world_version() {
-	if [[ ! -d "$ROCKSDB_DIR" ]]; then
-		return 1
-	fi
+  if [[ ! -d "$ROCKSDB_DIR" ]]; then
+    return 1
+  fi
 
-	find "$ROCKSDB_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | sort -V | tail -n 1
+  find "$ROCKSDB_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | sort -V | tail -n 1
 }
 
 generate_world_id() {
-	od -An -N16 -tx1 /dev/urandom | tr -d ' \n' | tr '[:lower:]' '[:upper:]'
+  od -An -N16 -tx1 /dev/urandom | tr -d ' \n' | tr '[:lower:]' '[:upper:]'
 }
 
 worlds_dir_for_version() {
-	local version="$1"
-	printf '%s' "$ROCKSDB_DIR/$version/Worlds"
+  local version="$1"
+  printf '%s' "$ROCKSDB_DIR/$version/Worlds"
 }
 
 world_description_file() {
-	local version="$1"
-	local world_id="$2"
-	printf '%s' "$(worlds_dir_for_version "$version")/$world_id/WorldDescription.json"
+  local version="$1"
+  local world_id="$2"
+  printf '%s' "$(worlds_dir_for_version "$version")/$world_id/WorldDescription.json"
 }
 
 world_pending_name_file() {
-	local version="$1"
-	local world_id="$2"
-	printf '%s' "$(worlds_dir_for_version "$version")/$world_id/$WORLD_NAME_PENDING_FILE"
+  local version="$1"
+  local world_id="$2"
+  printf '%s' "$(worlds_dir_for_version "$version")/$world_id/$WORLD_NAME_PENDING_FILE"
 }
 
 read_pending_world_name() {
-	local version="$1"
-	local world_id="$2"
-	local pending_file
+  local version="$1"
+  local world_id="$2"
+  local pending_file
 
-	pending_file="$(world_pending_name_file "$version" "$world_id")"
-	if [[ -f "$pending_file" ]]; then
-		head -n 1 "$pending_file"
-	fi
+  pending_file="$(world_pending_name_file "$version" "$world_id")"
+  if [[ -f "$pending_file" ]]; then
+    head -n 1 "$pending_file"
+  fi
 }
 
 write_pending_world_name() {
-	local version="$1"
-	local world_id="$2"
-	local world_name="$3"
-	local pending_file
+  local version="$1"
+  local world_id="$2"
+  local world_name="$3"
+  local pending_file
 
-	pending_file="$(world_pending_name_file "$version" "$world_id")"
-	printf '%s\n' "$world_name" >"$pending_file"
+  pending_file="$(world_pending_name_file "$version" "$world_id")"
+  printf '%s\n' "$world_name" >"$pending_file"
 }
 
 sync_world_name_metadata() {
-	local version="$1"
-	local world_id="$2"
-	local world_name="$3"
-	local world_desc_file tmp_file pending_file
+  local version="$1"
+  local world_id="$2"
+  local world_name="$3"
+  local world_desc_file tmp_file pending_file
 
-	[[ -z "$world_name" ]] && return 1
+  [[ -z "$world_name" ]] && return 1
 
-	world_desc_file="$(world_description_file "$version" "$world_id")"
-	pending_file="$(world_pending_name_file "$version" "$world_id")"
-	if [[ ! -f "$world_desc_file" ]]; then
-		return 1
-	fi
+  world_desc_file="$(world_description_file "$version" "$world_id")"
+  pending_file="$(world_pending_name_file "$version" "$world_id")"
+  if [[ ! -f "$world_desc_file" ]]; then
+    return 1
+  fi
 
-	tmp_file="$world_desc_file.tmp"
-	jq --arg world_name "$world_name" '.WorldDescription.WorldName = $world_name' "$world_desc_file" >"$tmp_file"
-	mv "$tmp_file" "$world_desc_file"
-	rm -f "$pending_file"
-	return 0
+  tmp_file="$world_desc_file.tmp"
+  jq --arg world_name "$world_name" '.WorldDescription.WorldName = $world_name' "$world_desc_file" >"$tmp_file"
+  mv "$tmp_file" "$world_desc_file"
+  rm -f "$pending_file"
+  return 0
 }
 
 apply_pending_world_name() {
-	local version="$1"
-	local world_id="$2"
-	local pending_name
+  local version="$1"
+  local world_id="$2"
+  local pending_name
 
-	pending_name="$(read_pending_world_name "$version" "$world_id")"
-	if [[ -n "$pending_name" ]]; then
-		sync_world_name_metadata "$version" "$world_id" "$pending_name" >/dev/null 2>&1 || true
-	fi
+  pending_name="$(read_pending_world_name "$version" "$world_id")"
+  if [[ -n "$pending_name" ]]; then
+    sync_world_name_metadata "$version" "$world_id" "$pending_name" >/dev/null 2>&1 || true
+  fi
 }
 
 wait_and_sync_world_name() {
-	local version="$1"
-	local world_id="$2"
-	local world_name="$3"
+  local version="$1"
+  local world_id="$2"
+  local world_name="$3"
 
-	[[ -z "$world_name" ]] && return 0
+  [[ -z "$world_name" ]] && return 0
 
-	log_step "Waiting for world metadata so the new name can be saved"
-	for _ in $(seq 1 60); do
-		if sync_world_name_metadata "$version" "$world_id" "$world_name" >/dev/null 2>&1; then
-			log_step_done
-			log_ok "Saved world name to metadata: $world_name"
-			return 0
-		fi
-		if ! server_is_running; then
-			break
-		fi
-		sleep 1
-	done
+  log_step "Waiting for world metadata so the new name can be saved"
+  for _ in $(seq 1 60); do
+    if sync_world_name_metadata "$version" "$world_id" "$world_name" >/dev/null 2>&1; then
+      log_step_done
+      log_ok "Saved world name to metadata: $world_name"
+      return 0
+    fi
+    if ! server_is_running; then
+      break
+    fi
+    sleep 1
+  done
 
-	log_step_pending
-	log_warn "World metadata is not available yet. The requested name will be applied automatically later."
-	return 0
+  log_step_pending
+  log_warn "World metadata is not available yet. The requested name will be applied automatically later."
+  return 0
 }
 
 load_world_ids() {
-	local worlds_dir="$1"
+  local worlds_dir="$1"
 
-	find "$worlds_dir" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | sort
+  find "$worlds_dir" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | sort
 }
 
 world_display_name() {
-	local version="$1"
-	local world_id="$2"
-	local current_world_id="$3"
-	local current_server_name="$4"
-	local world_desc_file world_name pending_name
+  local version="$1"
+  local world_id="$2"
+  local current_world_id="$3"
+  local current_server_name="$4"
+  local world_desc_file world_name pending_name
 
-	apply_pending_world_name "$version" "$world_id"
+  apply_pending_world_name "$version" "$world_id"
 
-	world_desc_file="$(world_description_file "$version" "$world_id")"
-	if [[ -f "$world_desc_file" ]]; then
-		world_name="$(jq -r '.WorldDescription.WorldName // empty' "$world_desc_file" 2>/dev/null || true)"
-		if [[ -n "$world_name" && "$world_name" != "null" ]]; then
-			printf '%s' "$world_name"
-			return 0
-		fi
-	fi
+  world_desc_file="$(world_description_file "$version" "$world_id")"
+  if [[ -f "$world_desc_file" ]]; then
+    world_name="$(jq -r '.WorldDescription.WorldName // empty' "$world_desc_file" 2>/dev/null || true)"
+    if [[ -n "$world_name" && "$world_name" != "null" ]]; then
+      printf '%s' "$world_name"
+      return 0
+    fi
+  fi
 
-	pending_name="$(read_pending_world_name "$version" "$world_id")"
-	if [[ -n "$pending_name" ]]; then
-		printf '%s' "$pending_name"
-		return 0
-	fi
+  pending_name="$(read_pending_world_name "$version" "$world_id")"
+  if [[ -n "$pending_name" ]]; then
+    printf '%s' "$pending_name"
+    return 0
+  fi
 
-	if [[ "$world_id" == "$current_world_id" && -n "$current_server_name" ]]; then
-		printf '%s' "$current_server_name"
-		return 0
-	fi
+  if [[ "$world_id" == "$current_world_id" && -n "$current_server_name" ]]; then
+    printf '%s' "$current_server_name"
+    return 0
+  fi
 
-	printf '%s' "$world_id"
+  printf '%s' "$world_id"
 }
 
 world_is_initialized() {
-	local version="$1"
-	local world_id="$2"
-	local world_desc_file
+  local version="$1"
+  local world_id="$2"
+  local world_desc_file
 
-	world_desc_file="$(world_description_file "$version" "$world_id")"
-	[[ -f "$world_desc_file" ]]
+  world_desc_file="$(world_description_file "$version" "$world_id")"
+  [[ -f "$world_desc_file" ]]
 }
 
 world_is_pending_init() {
-	local version="$1"
-	local world_id="$2"
-	local pending_file
+  local version="$1"
+  local world_id="$2"
+  local pending_file
 
-	pending_file="$(world_pending_name_file "$version" "$world_id")"
-	[[ -f "$pending_file" ]]
+  pending_file="$(world_pending_name_file "$version" "$world_id")"
+  [[ -f "$pending_file" ]]
 }
 
 world_is_ghost_placeholder() {
-	local version="$1"
-	local world_id="$2"
-	local world_dir extra_entry
+  local version="$1"
+  local world_id="$2"
+  local world_dir extra_entry
 
-	if world_is_initialized "$version" "$world_id"; then
-		return 1
-	fi
+  if world_is_initialized "$version" "$world_id"; then
+    return 1
+  fi
 
-	if ! world_is_pending_init "$version" "$world_id"; then
-		return 1
-	fi
+  if ! world_is_pending_init "$version" "$world_id"; then
+    return 1
+  fi
 
-	world_dir="$(worlds_dir_for_version "$version")/$world_id"
-	extra_entry="$(find "$world_dir" -mindepth 1 -maxdepth 1 ! -name "$WORLD_NAME_PENDING_FILE" -print -quit 2>/dev/null || true)"
-	[[ -z "$extra_entry" ]]
+  world_dir="$(worlds_dir_for_version "$version")/$world_id"
+  extra_entry="$(find "$world_dir" -mindepth 1 -maxdepth 1 ! -name "$WORLD_NAME_PENDING_FILE" -print -quit 2>/dev/null || true)"
+  [[ -z "$extra_entry" ]]
 }
 
 should_hide_world_from_list() {
-	local version="$1"
-	local world_id="$2"
-	local current_world_id="$3"
+  local version="$1"
+  local world_id="$2"
+  local current_world_id="$3"
 
-	if [[ "$world_id" == "$current_world_id" ]]; then
-		return 1
-	fi
+  if [[ "$world_id" == "$current_world_id" ]]; then
+    return 1
+  fi
 
-	world_is_ghost_placeholder "$version" "$world_id"
+  world_is_ghost_placeholder "$version" "$world_id"
 }
 
 build_visible_world_ids() {
-	local version="$1"
-	local worlds_dir="$2"
-	local current_world_id="$3"
-	local world_id
+  local version="$1"
+  local worlds_dir="$2"
+  local current_world_id="$3"
+  local world_id
 
-	while IFS= read -r world_id; do
-		if should_hide_world_from_list "$version" "$world_id" "$current_world_id"; then
-			continue
-		fi
-		printf '%s\n' "$world_id"
-	done < <(load_world_ids "$worlds_dir")
+  while IFS= read -r world_id; do
+    if should_hide_world_from_list "$version" "$world_id" "$current_world_id"; then
+      continue
+    fi
+    printf '%s\n' "$world_id"
+  done < <(load_world_ids "$worlds_dir")
 }
 
 print_world_header() {
-	local version="$1"
-	local worlds_dir="$2"
+  local version="$1"
+  local worlds_dir="$2"
 
-	log_info "Worlds"
-	echo -e "${_COLOR_CYAN}  Save version:${_COLOR_RESET} $version"
-	echo -e "${_COLOR_CYAN}  Worlds path:${_COLOR_RESET} $worlds_dir"
-	echo
+  log_info "Worlds"
+  echo -e "${_COLOR_CYAN}  Save version:${_COLOR_RESET} $version"
+  echo -e "${_COLOR_CYAN}  Worlds path:${_COLOR_RESET} $worlds_dir"
+  echo
 }
 
 print_world_entry() {
-	local index="$1"
-	local display_name="$2"
-	local is_current="$3"
-	local is_pending="$4"
+  local index="$1"
+  local display_name="$2"
+  local is_current="$3"
+  local is_pending="$4"
 
-	printf '  %b%d)%b %s' "${_COLOR_CYAN}" "$index" "${_COLOR_RESET}" "$display_name"
+  printf '  %b%d)%b %s' "${_COLOR_CYAN}" "$index" "${_COLOR_RESET}" "$display_name"
 
-	if [[ "$is_current" == "true" ]]; then
-		printf ' %b[current]%b' "${_COLOR_GREEN}" "${_COLOR_RESET}"
-	fi
+  if [[ "$is_current" == "true" ]]; then
+    printf ' %b[current]%b' "${_COLOR_GREEN}" "${_COLOR_RESET}"
+  fi
 
-	if [[ "$is_pending" == "true" ]]; then
-		printf ' %b[pending init]%b' "${_COLOR_YELLOW}" "${_COLOR_RESET}"
-	fi
+  if [[ "$is_pending" == "true" ]]; then
+    printf ' %b[pending init]%b' "${_COLOR_YELLOW}" "${_COLOR_RESET}"
+  fi
 
-	printf '\n'
+  printf '\n'
 }
 
 print_worlds() {
-	local version="$1"
-	local current_world_id="$2"
-	local current_server_name="$3"
-	local worlds_dir display_name
-	local is_current is_pending
-	local -a world_ids=()
+  local version="$1"
+  local current_world_id="$2"
+  local current_server_name="$3"
+  local worlds_dir display_name
+  local is_current is_pending
+  local -a world_ids=()
 
-	worlds_dir="$(worlds_dir_for_version "$version")"
-	while IFS= read -r world_id; do
-		world_ids+=("$world_id")
-	done < <(build_visible_world_ids "$version" "$worlds_dir" "$current_world_id")
+  worlds_dir="$(worlds_dir_for_version "$version")"
+  while IFS= read -r world_id; do
+    world_ids+=("$world_id")
+  done < <(build_visible_world_ids "$version" "$worlds_dir" "$current_world_id")
 
-	print_world_header "$version" "$worlds_dir"
+  print_world_header "$version" "$worlds_dir"
 
-	if ((${#world_ids[@]} == 0)); then
-		log_warn "No existing worlds were found for version $version."
-		return 0
-	fi
+  if ((${#world_ids[@]} == 0)); then
+    log_warn "No existing worlds were found for version $version."
+    return 0
+  fi
 
-	for i in "${!world_ids[@]}"; do
-		display_name="$(world_display_name "$version" "${world_ids[$i]}" "$current_world_id" "$current_server_name")"
-		if [[ "${world_ids[$i]}" == "$current_world_id" ]]; then
-			is_current="true"
-		else
-			is_current="false"
-		fi
+  for i in "${!world_ids[@]}"; do
+    display_name="$(world_display_name "$version" "${world_ids[$i]}" "$current_world_id" "$current_server_name")"
+    if [[ "${world_ids[$i]}" == "$current_world_id" ]]; then
+      is_current="true"
+    else
+      is_current="false"
+    fi
 
-		if ! world_is_initialized "$version" "${world_ids[$i]}" && world_is_pending_init "$version" "${world_ids[$i]}"; then
-			is_pending="true"
-		else
-			is_pending="false"
-		fi
+    if ! world_is_initialized "$version" "${world_ids[$i]}" && world_is_pending_init "$version" "${world_ids[$i]}"; then
+      is_pending="true"
+    else
+      is_pending="false"
+    fi
 
-		print_world_entry "$((i + 1))" "$display_name" "$is_current" "$is_pending"
-	done
+    print_world_entry "$((i + 1))" "$display_name" "$is_current" "$is_pending"
+  done
 }
 
 list_worlds() {
-	local version current_world_id current_server_name
+  local version current_world_id current_server_name
 
-	require_jq
+  require_jq
 
-	if [[ ! -f "$SERVER_DESC_FILE" ]]; then
-		log_error "ServerDescription.json not found at $SERVER_DESC_FILE"
-		log_info "Start the server once so the game can generate its config, then try again."
-		exit 1
-	fi
+  if [[ ! -f "$SERVER_DESC_FILE" ]]; then
+    log_error "ServerDescription.json not found at $SERVER_DESC_FILE"
+    log_info "Start the server once so the game can generate its config, then try again."
+    exit 1
+  fi
 
-	version="$(detect_world_version || true)"
-	if [[ -z "$version" ]]; then
-		log_error "No RocksDB version directory found under $ROCKSDB_DIR"
-		log_info "Start the server once so the save path is initialized, then try again."
-		exit 1
-	fi
+  version="$(detect_world_version || true)"
+  if [[ -z "$version" ]]; then
+    log_error "No RocksDB version directory found under $ROCKSDB_DIR"
+    log_info "Start the server once so the save path is initialized, then try again."
+    exit 1
+  fi
 
-	current_world_id="$(jq -r '.ServerDescription_Persistent.WorldIslandId // empty' "$SERVER_DESC_FILE")"
-	current_server_name="$(jq -r '.ServerDescription_Persistent.ServerName // empty' "$SERVER_DESC_FILE")"
-	print_worlds "$version" "$current_world_id" "$current_server_name"
+  current_world_id="$(jq -r '.ServerDescription_Persistent.WorldIslandId // empty' "$SERVER_DESC_FILE")"
+  current_server_name="$(jq -r '.ServerDescription_Persistent.ServerName // empty' "$SERVER_DESC_FILE")"
+  print_worlds "$version" "$current_world_id" "$current_server_name"
 }
 
 check_worlds() {
-	local version worlds_dir world_id pending_file extra_entry
-	local issue_count=0
+  local version worlds_dir world_id pending_file extra_entry
+  local issue_count=0
 
-	version="$(detect_world_version || true)"
-	if [[ -z "$version" ]]; then
-		log_error "No RocksDB version directory found under $ROCKSDB_DIR"
-		log_info "Start the server once so the save path is initialized, then try again."
-		exit 1
-	fi
+  version="$(detect_world_version || true)"
+  if [[ -z "$version" ]]; then
+    log_error "No RocksDB version directory found under $ROCKSDB_DIR"
+    log_info "Start the server once so the save path is initialized, then try again."
+    exit 1
+  fi
 
-	worlds_dir="$(worlds_dir_for_version "$version")"
-	if [[ ! -d "$worlds_dir" ]]; then
-		log_warn "Worlds directory does not exist yet: $worlds_dir"
-		return 0
-	fi
+  worlds_dir="$(worlds_dir_for_version "$version")"
+  if [[ ! -d "$worlds_dir" ]]; then
+    log_warn "Worlds directory does not exist yet: $worlds_dir"
+    return 0
+  fi
 
-	log_info "Checking worlds for orphan or broken entries"
-	echo -e "${_COLOR_CYAN}  Save version:${_COLOR_RESET} $version"
-	echo -e "${_COLOR_CYAN}  Worlds path:${_COLOR_RESET} $worlds_dir"
+  log_info "Checking worlds for orphan or broken entries"
+  echo -e "${_COLOR_CYAN}  Save version:${_COLOR_RESET} $version"
+  echo -e "${_COLOR_CYAN}  Worlds path:${_COLOR_RESET} $worlds_dir"
 
-	while IFS= read -r world_id; do
-		if world_is_initialized "$version" "$world_id"; then
-			continue
-		fi
+  while IFS= read -r world_id; do
+    if world_is_initialized "$version" "$world_id"; then
+      continue
+    fi
 
-		issue_count=$((issue_count + 1))
-		pending_file="$(world_pending_name_file "$version" "$world_id")"
-		extra_entry="$(find "$worlds_dir/$world_id" -mindepth 1 -maxdepth 1 ! -name "$WORLD_NAME_PENDING_FILE" -print -quit 2>/dev/null || true)"
+    issue_count=$((issue_count + 1))
+    pending_file="$(world_pending_name_file "$version" "$world_id")"
+    extra_entry="$(find "$worlds_dir/$world_id" -mindepth 1 -maxdepth 1 ! -name "$WORLD_NAME_PENDING_FILE" -print -quit 2>/dev/null || true)"
 
-		if [[ -f "$pending_file" && -z "$extra_entry" ]]; then
-			echo -e "  ${_COLOR_YELLOW}- $world_id${_COLOR_RESET}: pending placeholder (only $WORLD_NAME_PENDING_FILE)"
-		elif [[ -f "$pending_file" ]]; then
-			echo -e "  ${_COLOR_YELLOW}- $world_id${_COLOR_RESET}: incomplete world (missing WorldDescription.json, has pending name)"
-		else
-			echo -e "  ${_COLOR_RED}- $world_id${_COLOR_RESET}: broken world (missing WorldDescription.json)"
-		fi
-	done < <(load_world_ids "$worlds_dir")
+    if [[ -f "$pending_file" && -z "$extra_entry" ]]; then
+      echo -e "  ${_COLOR_YELLOW}- $world_id${_COLOR_RESET}: pending placeholder (only $WORLD_NAME_PENDING_FILE)"
+    elif [[ -f "$pending_file" ]]; then
+      echo -e "  ${_COLOR_YELLOW}- $world_id${_COLOR_RESET}: incomplete world (missing WorldDescription.json, has pending name)"
+    else
+      echo -e "  ${_COLOR_RED}- $world_id${_COLOR_RESET}: broken world (missing WorldDescription.json)"
+    fi
+  done < <(load_world_ids "$worlds_dir")
 
-	if [[ "$issue_count" -eq 0 ]]; then
-		log_ok "No orphan or broken worlds detected."
-	else
-		log_warn "Detected $issue_count orphan or broken world entries."
-	fi
+  if [[ "$issue_count" -eq 0 ]]; then
+    log_ok "No orphan or broken worlds detected."
+  else
+    log_warn "Detected $issue_count orphan or broken world entries."
+  fi
 }
 
 switch_world() {
-	local version worlds_dir current_world_id current_server_name was_running=""
-	local selected_id choice tmp_file created_new="false" new_world_name=""
-	local -a world_ids=()
+  local version worlds_dir current_world_id current_server_name was_running=""
+  local selected_id choice tmp_file created_new="false" new_world_name=""
+  local -a world_ids=()
 
-	require_jq
+  require_jq
 
-	if [[ ! -f "$SERVER_DESC_FILE" ]]; then
-		log_error "ServerDescription.json not found at $SERVER_DESC_FILE"
-		log_info "Start the server once so the game can generate its config, then try again."
-		exit 1
-	fi
+  if [[ ! -f "$SERVER_DESC_FILE" ]]; then
+    log_error "ServerDescription.json not found at $SERVER_DESC_FILE"
+    log_info "Start the server once so the game can generate its config, then try again."
+    exit 1
+  fi
 
-	version="$(detect_world_version || true)"
-	if [[ -z "$version" ]]; then
-		log_error "No RocksDB version directory found under $ROCKSDB_DIR"
-		log_info "Start the server once so the save path is initialized, then try again."
-		exit 1
-	fi
+  version="$(detect_world_version || true)"
+  if [[ -z "$version" ]]; then
+    log_error "No RocksDB version directory found under $ROCKSDB_DIR"
+    log_info "Start the server once so the save path is initialized, then try again."
+    exit 1
+  fi
 
-	worlds_dir="$ROCKSDB_DIR/$version/Worlds"
-	mkdir -p "$worlds_dir"
+  worlds_dir="$ROCKSDB_DIR/$version/Worlds"
+  mkdir -p "$worlds_dir"
 
-	current_world_id="$(jq -r '.ServerDescription_Persistent.WorldIslandId // empty' "$SERVER_DESC_FILE")"
-	if [[ -z "$current_world_id" || "$current_world_id" == "null" ]]; then
-		log_error "WorldIslandId is missing in $SERVER_DESC_FILE"
-		exit 1
-	fi
+  current_world_id="$(jq -r '.ServerDescription_Persistent.WorldIslandId // empty' "$SERVER_DESC_FILE")"
+  if [[ -z "$current_world_id" || "$current_world_id" == "null" ]]; then
+    log_error "WorldIslandId is missing in $SERVER_DESC_FILE"
+    exit 1
+  fi
 
-	current_server_name="$(jq -r '.ServerDescription_Persistent.ServerName // empty' "$SERVER_DESC_FILE")"
+  current_server_name="$(jq -r '.ServerDescription_Persistent.ServerName // empty' "$SERVER_DESC_FILE")"
 
-	while IFS= read -r world_id; do
-		world_ids+=("$world_id")
-	done < <(build_visible_world_ids "$version" "$worlds_dir" "$current_world_id")
+  while IFS= read -r world_id; do
+    world_ids+=("$world_id")
+  done < <(build_visible_world_ids "$version" "$worlds_dir" "$current_world_id")
 
-	print_worlds "$version" "$current_world_id" "$current_server_name"
+  print_worlds "$version" "$current_world_id" "$current_server_name"
 
-	echo -e "  ${_COLOR_CYAN}N)${_COLOR_RESET} Create a new world"
-	echo -e "  ${_COLOR_CYAN}Q)${_COLOR_RESET} Cancel"
-	echo
-	read -r -p "$(prompt_text "Select a world: ")" choice
+  echo -e "  ${_COLOR_CYAN}N)${_COLOR_RESET} Create a new world"
+  echo -e "  ${_COLOR_CYAN}Q)${_COLOR_RESET} Cancel"
+  echo
+  read -r -p "$(prompt_text "Select a world: ")" choice
 
-	case "$choice" in
-	[Qq])
-		log_info "World switch canceled."
-		return 0
-		;;
-	[Nn])
-		selected_id="$(generate_world_id)"
-		mkdir -p "$worlds_dir/$selected_id"
-		created_new="true"
-		if ! is_utf8_locale; then
-			log_warn "Current shell locale is not UTF-8. Non-ASCII world names may display incorrectly."
-			log_warn "Consider: export LANG=C.UTF-8"
-		fi
-		read -r -p "$(prompt_text "New world name (optional): ")" new_world_name
-		if [[ -n "$new_world_name" ]]; then
-			write_pending_world_name "$version" "$selected_id" "$new_world_name"
-		fi
-		;;
-	*)
-		if [[ ! "$choice" =~ ^[0-9]+$ ]] || ((choice < 1 || choice > ${#world_ids[@]})); then
-			log_error "Invalid selection."
-			exit 1
-		fi
-		selected_id="${world_ids[$((choice - 1))]}"
-		;;
-	esac
+  case "$choice" in
+  [Qq])
+    log_info "World switch canceled."
+    return 0
+    ;;
+  [Nn])
+    selected_id="$(generate_world_id)"
+    mkdir -p "$worlds_dir/$selected_id"
+    created_new="true"
+    if ! is_utf8_locale; then
+      log_warn "Current shell locale is not UTF-8. Non-ASCII world names may display incorrectly."
+      log_warn "Consider: export LANG=C.UTF-8"
+    fi
+    read -r -p "$(prompt_text "New world name (optional): ")" new_world_name
+    if [[ -n "$new_world_name" ]]; then
+      write_pending_world_name "$version" "$selected_id" "$new_world_name"
+    fi
+    ;;
+  *)
+    if [[ ! "$choice" =~ ^[0-9]+$ ]] || ((choice < 1 || choice > ${#world_ids[@]})); then
+      log_error "Invalid selection."
+      exit 1
+    fi
+    selected_id="${world_ids[$((choice - 1))]}"
+    ;;
+  esac
 
-	if server_is_running; then
-		was_running="yes"
-		log_step "Stopping server before world switch"
-		if ! dc stop "$SERVICE_NAME" >/dev/null 2>&1; then
-			log_step_failed
-			log_error "Failed to stop container before changing WorldIslandId."
-			exit 1
-		fi
-		log_step_done
-	fi
+  if server_is_running; then
+    was_running="yes"
+    log_step "Stopping server before world switch"
+    if ! dc stop "$SERVICE_NAME" >/dev/null 2>&1; then
+      log_step_failed
+      log_error "Failed to stop container before changing WorldIslandId."
+      exit 1
+    fi
+    log_step_done
+  fi
 
-	tmp_file="$SERVER_DESC_FILE.tmp"
-	jq --arg world_id "$selected_id" '.ServerDescription_Persistent.WorldIslandId = $world_id' "$SERVER_DESC_FILE" >"$tmp_file"
-	mv "$tmp_file" "$SERVER_DESC_FILE"
+  tmp_file="$SERVER_DESC_FILE.tmp"
+  jq --arg world_id "$selected_id" '.ServerDescription_Persistent.WorldIslandId = $world_id' "$SERVER_DESC_FILE" >"$tmp_file"
+  mv "$tmp_file" "$SERVER_DESC_FILE"
 
-	if [[ "$created_new" == "true" ]]; then
-		if [[ -n "$new_world_name" ]]; then
-			log_ok "Created and selected new world: $new_world_name"
-		else
-			log_ok "Created and selected new world: $selected_id"
-		fi
-		log_info "The server will initialize the new world data on next start."
-	elif [[ "$selected_id" == "$current_world_id" ]]; then
-		log_ok "World remains unchanged: $(world_display_name "$version" "$selected_id" "$current_world_id" "$current_server_name")"
-	else
-		log_ok "Selected world: $(world_display_name "$version" "$selected_id" "$current_world_id" "$current_server_name")"
-	fi
+  if [[ "$created_new" == "true" ]]; then
+    if [[ -n "$new_world_name" ]]; then
+      log_ok "Created and selected new world: $new_world_name"
+    else
+      log_ok "Created and selected new world: $selected_id"
+    fi
+    log_info "The server will initialize the new world data on next start."
+  elif [[ "$selected_id" == "$current_world_id" ]]; then
+    log_ok "World remains unchanged: $(world_display_name "$version" "$selected_id" "$current_world_id" "$current_server_name")"
+  else
+    log_ok "Selected world: $(world_display_name "$version" "$selected_id" "$current_world_id" "$current_server_name")"
+  fi
 
-	if [[ -n "$was_running" ]]; then
-		log_step "Starting server again"
-		if ! dc up -d >/dev/null 2>&1; then
-			log_step_failed
-			log_error "World was switched, but the container failed to start again."
-			exit 1
-		fi
-		log_step_done
-		if [[ "$created_new" == "true" && -n "$new_world_name" ]]; then
-			wait_and_sync_world_name "$version" "$selected_id" "$new_world_name"
-		fi
-	else
-		log_info "Server was not running. Start it manually when you want to load the selected world."
-	fi
+  if [[ -n "$was_running" ]]; then
+    log_step "Starting server again"
+    if ! dc up -d >/dev/null 2>&1; then
+      log_step_failed
+      log_error "World was switched, but the container failed to start again."
+      exit 1
+    fi
+    log_step_done
+    if [[ "$created_new" == "true" && -n "$new_world_name" ]]; then
+      wait_and_sync_world_name "$version" "$selected_id" "$new_world_name"
+    fi
+  else
+    log_info "Server was not running. Start it manually when you want to load the selected world."
+  fi
 }
 
 restart_server() {
-	log_step "Restarting server"
-	if ! dc restart "$SERVICE_NAME"; then
-		dc stop "$SERVICE_NAME" || true
-		if ! dc up -d >/dev/null 2>&1; then
-			log_step_failed
-			log_error "Failed to restart server."
-			exit 1
-		fi
-	fi
-	log_step_done
-	dc ps
+  log_step "Restarting server"
+  if ! dc restart "$SERVICE_NAME"; then
+    dc stop "$SERVICE_NAME" || true
+    if ! dc up -d >/dev/null 2>&1; then
+      log_step_failed
+      log_error "Failed to restart server."
+      exit 1
+    fi
+  fi
+  log_step_done
+  dc ps
 }
 
 status_server() {
-	log_info "Service status ($ACTIVE_MODE mode):"
-	dc ps
+  log_info "Service status ($ACTIVE_MODE mode):"
+  dc ps
 }
 
 status_json() {
-	local container_name running health="unknown"
-	local invite_code="" world_id="" server_name=""
-	local generated_at
+  local container_name running health="unknown"
+  local invite_code="" world_id="" server_name=""
+  local generated_at
 
-	container_name="$(dotenv_value CONTAINER_NAME || true)"
-	container_name="${container_name:-$SERVICE_NAME}"
+  container_name="$(dotenv_value CONTAINER_NAME || true)"
+  container_name="${container_name:-$SERVICE_NAME}"
 
-	if server_is_running; then
-		running="true"
-	else
-		running="false"
-	fi
+  if server_is_running; then
+    running="true"
+  else
+    running="false"
+  fi
 
-	health="$("${DOCKER_CMD[@]}" inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container_name" 2>/dev/null || true)"
-	health="${health//$'\n'/}"
-	if [[ -z "$health" ]]; then
-		health="not-found"
-	fi
-	generated_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  health="$("${DOCKER_CMD[@]}" inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container_name" 2>/dev/null || true)"
+  health="${health//$'\n'/}"
+  if [[ -z "$health" ]]; then
+    health="not-found"
+  fi
+  generated_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-	if [[ -f "$SERVER_DESC_FILE" ]] && command -v jq >/dev/null 2>&1; then
-		invite_code="$(jq -r '.ServerDescription_Persistent.InviteCode // .InviteCode // empty' "$SERVER_DESC_FILE" 2>/dev/null || true)"
-		world_id="$(jq -r '.ServerDescription_Persistent.WorldIslandId // empty' "$SERVER_DESC_FILE" 2>/dev/null || true)"
-		server_name="$(jq -r '.ServerDescription_Persistent.ServerName // empty' "$SERVER_DESC_FILE" 2>/dev/null || true)"
-	fi
+  if [[ -f "$SERVER_DESC_FILE" ]] && command -v jq >/dev/null 2>&1; then
+    invite_code="$(jq -r '.ServerDescription_Persistent.InviteCode // .InviteCode // empty' "$SERVER_DESC_FILE" 2>/dev/null || true)"
+    world_id="$(jq -r '.ServerDescription_Persistent.WorldIslandId // empty' "$SERVER_DESC_FILE" 2>/dev/null || true)"
+    server_name="$(jq -r '.ServerDescription_Persistent.ServerName // empty' "$SERVER_DESC_FILE" 2>/dev/null || true)"
+  fi
 
-	if command -v jq >/dev/null 2>&1; then
-		jq -n \
-			--arg mode "$ACTIVE_MODE" \
-			--arg service "$SERVICE_NAME" \
-			--arg container "$container_name" \
-			--arg running "$running" \
-			--arg health "$health" \
-			--arg invite_code "$invite_code" \
-			--arg world_id "$world_id" \
-			--arg server_name "$server_name" \
-			--arg generated_at "$generated_at" \
-			'{
+  if command -v jq >/dev/null 2>&1; then
+    jq -n \
+      --arg mode "$ACTIVE_MODE" \
+      --arg service "$SERVICE_NAME" \
+      --arg container "$container_name" \
+      --arg running "$running" \
+      --arg health "$health" \
+      --arg invite_code "$invite_code" \
+      --arg world_id "$world_id" \
+      --arg server_name "$server_name" \
+      --arg generated_at "$generated_at" \
+      '{
                 mode: $mode,
                 service: $service,
                 container: $container,
@@ -811,243 +811,243 @@ status_json() {
                 server_name: $server_name,
                 generated_at: $generated_at
             }'
-	else
-		printf '{"mode":"%s","service":"%s","container":"%s","running":%s,"health":"%s","invite_code":"%s","world_id":"%s","server_name":"%s","generated_at":"%s"}\n' \
-			"$ACTIVE_MODE" "$SERVICE_NAME" "$container_name" "$running" "$health" "$invite_code" "$world_id" "$server_name" "$generated_at"
-	fi
+  else
+    printf '{"mode":"%s","service":"%s","container":"%s","running":%s,"health":"%s","invite_code":"%s","world_id":"%s","server_name":"%s","generated_at":"%s"}\n' \
+      "$ACTIVE_MODE" "$SERVICE_NAME" "$container_name" "$running" "$health" "$invite_code" "$world_id" "$server_name" "$generated_at"
+  fi
 }
 
 doctor_server() {
-	local min_ram_mb=8192
-	local min_disk_mb=8192
-	local total_ram_mb=0
-	local free_disk_mb=0
-	local disk_mount="unknown"
-	local fail_count=0
-	local warn_count=0
-	local game_port query_port
-	local container_name health="unknown"
+  local min_ram_mb=8192
+  local min_disk_mb=8192
+  local total_ram_mb=0
+  local free_disk_mb=0
+  local disk_mount="unknown"
+  local fail_count=0
+  local warn_count=0
+  local game_port query_port
+  local container_name health="unknown"
 
-	log_info "Running doctor checks ($ACTIVE_MODE mode)"
+  log_info "Running doctor checks ($ACTIVE_MODE mode)"
 
-	if command -v docker >/dev/null 2>&1; then
-		log_ok "Docker CLI is available"
-	else
-		log_error "Docker CLI is not available in PATH"
-		fail_count=$((fail_count + 1))
-	fi
+  if command -v docker >/dev/null 2>&1; then
+    log_ok "Docker CLI is available"
+  else
+    log_error "Docker CLI is not available in PATH"
+    fail_count=$((fail_count + 1))
+  fi
 
-	if "${DOCKER_CMD[@]}" compose version >/dev/null 2>&1; then
-		log_ok "Docker Compose v2 is available"
-	else
-		log_error "Docker Compose v2 is not available"
-		fail_count=$((fail_count + 1))
-	fi
+  if "${DOCKER_CMD[@]}" compose version >/dev/null 2>&1; then
+    log_ok "Docker Compose v2 is available"
+  else
+    log_error "Docker Compose v2 is not available"
+    fail_count=$((fail_count + 1))
+  fi
 
-	if dc config -q >/dev/null 2>&1; then
-		log_ok "Compose configuration is valid"
-	else
-		log_error "Compose configuration is invalid"
-		fail_count=$((fail_count + 1))
-	fi
+  if dc config -q >/dev/null 2>&1; then
+    log_ok "Compose configuration is valid"
+  else
+    log_error "Compose configuration is invalid"
+    fail_count=$((fail_count + 1))
+  fi
 
-	if [[ -r /proc/meminfo ]]; then
-		total_ram_mb="$(awk '/^MemTotal:/ {printf "%d", $2/1024}' /proc/meminfo)"
-	fi
+  if [[ -r /proc/meminfo ]]; then
+    total_ram_mb="$(awk '/^MemTotal:/ {printf "%d", $2/1024}' /proc/meminfo)"
+  fi
 
-	if [[ "$total_ram_mb" =~ ^[0-9]+$ ]] && [[ "$total_ram_mb" -gt 0 ]]; then
-		if [[ "$total_ram_mb" -lt "$min_ram_mb" ]]; then
-			log_error "Host RAM is ${total_ram_mb} MB (minimum ${min_ram_mb} MB)"
-			fail_count=$((fail_count + 1))
-		else
-			log_ok "Host RAM is ${total_ram_mb} MB"
-		fi
-	else
-		log_warn "Could not detect host RAM"
-		warn_count=$((warn_count + 1))
-	fi
+  if [[ "$total_ram_mb" =~ ^[0-9]+$ ]] && [[ "$total_ram_mb" -gt 0 ]]; then
+    if [[ "$total_ram_mb" -lt "$min_ram_mb" ]]; then
+      log_error "Host RAM is ${total_ram_mb} MB (minimum ${min_ram_mb} MB)"
+      fail_count=$((fail_count + 1))
+    else
+      log_ok "Host RAM is ${total_ram_mb} MB"
+    fi
+  else
+    log_warn "Could not detect host RAM"
+    warn_count=$((warn_count + 1))
+  fi
 
-	read -r free_disk_mb disk_mount < <(df -Pm "$SCRIPT_DIR" | awk 'NR==2 {print $4, $6}')
-	if [[ "$free_disk_mb" =~ ^[0-9]+$ ]] && [[ "$free_disk_mb" -gt 0 ]]; then
-		if [[ "$free_disk_mb" -lt "$min_disk_mb" ]]; then
-			log_error "Free disk on ${disk_mount} is ${free_disk_mb} MB (minimum ${min_disk_mb} MB)"
-			fail_count=$((fail_count + 1))
-		else
-			log_ok "Free disk on ${disk_mount} is ${free_disk_mb} MB"
-		fi
-	else
-		log_warn "Could not detect free disk space"
-		warn_count=$((warn_count + 1))
-	fi
+  read -r free_disk_mb disk_mount < <(df -Pm "$SCRIPT_DIR" | awk 'NR==2 {print $4, $6}')
+  if [[ "$free_disk_mb" =~ ^[0-9]+$ ]] && [[ "$free_disk_mb" -gt 0 ]]; then
+    if [[ "$free_disk_mb" -lt "$min_disk_mb" ]]; then
+      log_error "Free disk on ${disk_mount} is ${free_disk_mb} MB (minimum ${min_disk_mb} MB)"
+      fail_count=$((fail_count + 1))
+    else
+      log_ok "Free disk on ${disk_mount} is ${free_disk_mb} MB"
+    fi
+  else
+    log_warn "Could not detect free disk space"
+    warn_count=$((warn_count + 1))
+  fi
 
-	if [[ -d "$SCRIPT_DIR/data/R5" ]]; then
-		log_ok "Save path exists: $SCRIPT_DIR/data/R5"
-	else
-		log_warn "Save path not initialized yet: $SCRIPT_DIR/data/R5"
-		warn_count=$((warn_count + 1))
-	fi
+  if [[ -d "$SCRIPT_DIR/data/R5" ]]; then
+    log_ok "Save path exists: $SCRIPT_DIR/data/R5"
+  else
+    log_warn "Save path not initialized yet: $SCRIPT_DIR/data/R5"
+    warn_count=$((warn_count + 1))
+  fi
 
-	if [[ -d "$SCRIPT_DIR/data" && -w "$SCRIPT_DIR/data" ]]; then
-		log_ok "Data path is writable: $SCRIPT_DIR/data"
-	else
-		log_warn "Data path is not writable: $SCRIPT_DIR/data"
-		warn_count=$((warn_count + 1))
-	fi
+  if [[ -d "$SCRIPT_DIR/data" && -w "$SCRIPT_DIR/data" ]]; then
+    log_ok "Data path is writable: $SCRIPT_DIR/data"
+  else
+    log_warn "Data path is not writable: $SCRIPT_DIR/data"
+    warn_count=$((warn_count + 1))
+  fi
 
-	container_name="$(dotenv_value CONTAINER_NAME || true)"
-	container_name="${container_name:-$SERVICE_NAME}"
+  container_name="$(dotenv_value CONTAINER_NAME || true)"
+  container_name="${container_name:-$SERVICE_NAME}"
 
-	if server_is_running; then
-		log_ok "Service is running: $SERVICE_NAME"
-		health="$("${DOCKER_CMD[@]}" inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container_name" 2>/dev/null || true)"
-		health="${health//$'\n'/}"
-		if [[ -z "$health" || "$health" == "not-found" ]]; then
-			log_warn "Container health could not be determined for $container_name"
-			warn_count=$((warn_count + 1))
-		elif [[ "$health" == "healthy" ]]; then
-			log_ok "Container health: healthy"
-		elif [[ "$health" == "none" ]]; then
-			log_warn "Container healthcheck is not configured"
-			warn_count=$((warn_count + 1))
-		else
-			log_warn "Container health: $health"
-			warn_count=$((warn_count + 1))
-		fi
-	else
-		log_warn "Service is not running: $SERVICE_NAME"
-		warn_count=$((warn_count + 1))
-	fi
+  if server_is_running; then
+    log_ok "Service is running: $SERVICE_NAME"
+    health="$("${DOCKER_CMD[@]}" inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container_name" 2>/dev/null || true)"
+    health="${health//$'\n'/}"
+    if [[ -z "$health" || "$health" == "not-found" ]]; then
+      log_warn "Container health could not be determined for $container_name"
+      warn_count=$((warn_count + 1))
+    elif [[ "$health" == "healthy" ]]; then
+      log_ok "Container health: healthy"
+    elif [[ "$health" == "none" ]]; then
+      log_warn "Container healthcheck is not configured"
+      warn_count=$((warn_count + 1))
+    else
+      log_warn "Container health: $health"
+      warn_count=$((warn_count + 1))
+    fi
+  else
+    log_warn "Service is not running: $SERVICE_NAME"
+    warn_count=$((warn_count + 1))
+  fi
 
-	game_port="${PORT:-$(dotenv_value PORT || true)}"
-	query_port="${QUERYPORT:-$(dotenv_value QUERYPORT || true)}"
-	game_port="${game_port:-7777}"
-	query_port="${query_port:-7778}"
+  game_port="${PORT:-$(dotenv_value PORT || true)}"
+  query_port="${QUERYPORT:-$(dotenv_value QUERYPORT || true)}"
+  game_port="${game_port:-7777}"
+  query_port="${query_port:-7778}"
 
-	if port_is_in_use "$game_port"; then
-		if server_is_running; then
-			log_ok "PORT ${game_port} is bound"
-		else
-			log_warn "PORT ${game_port} is already in use while service is stopped"
-			warn_count=$((warn_count + 1))
-		fi
-	else
-		if server_is_running; then
-			log_info "PORT ${game_port} is not detected as bound on host (can be normal with invite-code NAT punch-through)"
-		else
-			log_ok "PORT ${game_port} is free"
-		fi
-	fi
+  if port_is_in_use "$game_port"; then
+    if server_is_running; then
+      log_ok "PORT ${game_port} is bound"
+    else
+      log_warn "PORT ${game_port} is already in use while service is stopped"
+      warn_count=$((warn_count + 1))
+    fi
+  else
+    if server_is_running; then
+      log_info "PORT ${game_port} is not detected as bound on host (can be normal with invite-code NAT punch-through)"
+    else
+      log_ok "PORT ${game_port} is free"
+    fi
+  fi
 
-	if port_is_in_use "$query_port"; then
-		if server_is_running; then
-			log_ok "QUERYPORT ${query_port} is bound"
-		else
-			log_warn "QUERYPORT ${query_port} is already in use while service is stopped"
-			warn_count=$((warn_count + 1))
-		fi
-	else
-		if server_is_running; then
-			log_info "QUERYPORT ${query_port} is not detected as bound on host (can be normal with invite-code NAT punch-through)"
-		else
-			log_ok "QUERYPORT ${query_port} is free"
-		fi
-	fi
+  if port_is_in_use "$query_port"; then
+    if server_is_running; then
+      log_ok "QUERYPORT ${query_port} is bound"
+    else
+      log_warn "QUERYPORT ${query_port} is already in use while service is stopped"
+      warn_count=$((warn_count + 1))
+    fi
+  else
+    if server_is_running; then
+      log_info "QUERYPORT ${query_port} is not detected as bound on host (can be normal with invite-code NAT punch-through)"
+    else
+      log_ok "QUERYPORT ${query_port} is free"
+    fi
+  fi
 
-	log_info "Doctor summary: fails=${fail_count}, warnings=${warn_count}"
-	if [[ "$fail_count" -gt 0 ]]; then
-		log_error "Doctor checks failed. Fix errors above and run ./$SELF_NAME doctor again."
-		return 1
-	fi
+  log_info "Doctor summary: fails=${fail_count}, warnings=${warn_count}"
+  if [[ "$fail_count" -gt 0 ]]; then
+    log_error "Doctor checks failed. Fix errors above and run ./$SELF_NAME doctor again."
+    return 1
+  fi
 
-	if [[ "$warn_count" -gt 0 ]]; then
-		log_warn "Doctor checks finished with warnings."
-	else
-		log_ok "Doctor checks passed."
-	fi
+  if [[ "$warn_count" -gt 0 ]]; then
+    log_warn "Doctor checks finished with warnings."
+  else
+    log_ok "Doctor checks passed."
+  fi
 
-	return 0
+  return 0
 }
 
 follow_logs() {
-	log_info "Following logs"
-	dc logs --timestamps -f "$SERVICE_NAME" | sed 's/\.[0-9]*Z/Z/' | sed \
-		-e $'s/\(.*Error.*\)/\x1b[0;31m\\1\x1b[0m/' \
-		-e $'s/\(.*Warning.*\)/\x1b[1;33m\\1\x1b[0m/'
+  log_info "Following logs"
+  dc logs --timestamps -f "$SERVICE_NAME" | sed 's/\.[0-9]*Z/Z/' | sed \
+    -e $'s/\(.*Error.*\)/\x1b[0;31m\\1\x1b[0m/' \
+    -e $'s/\(.*Warning.*\)/\x1b[1;33m\\1\x1b[0m/'
 }
 
 json_escape() {
-	local value="$1"
-	value="${value//\\/\\\\}"
-	value="${value//\"/\\\"}"
-	value="${value//$'\n'/ }"
-	value="${value//$'\r'/}"
-	printf '%s' "$value"
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  value="${value//$'\n'/ }"
+  value="${value//$'\r'/}"
+  printf '%s' "$value"
 }
 
 player_history() {
-	local lines="${1:-1200}"
-	local history_file="$SCRIPT_DIR/logs/player-history.log"
-	local writer_cmd=(tee -a "$history_file")
+  local lines="${1:-1200}"
+  local history_file="$SCRIPT_DIR/logs/player-history.log"
+  local writer_cmd=(tee -a "$history_file")
 
-	if [[ ! "$lines" =~ ^[0-9]+$ ]] || [[ "$lines" -le 0 ]]; then
-		log_error "Invalid line count '$lines'. Use a positive integer."
-		exit 1
-	fi
+  if [[ ! "$lines" =~ ^[0-9]+$ ]] || [[ "$lines" -le 0 ]]; then
+    log_error "Invalid line count '$lines'. Use a positive integer."
+    exit 1
+  fi
 
-	mkdir -p "$(dirname "$history_file")"
+  mkdir -p "$(dirname "$history_file")"
 
-	if ! touch "$history_file" >/dev/null 2>&1; then
-		log_warn "Cannot write to $history_file (permission denied). Showing matched lines only."
-		writer_cmd=(cat)
-	fi
+  if ! touch "$history_file" >/dev/null 2>&1; then
+    log_warn "Cannot write to $history_file (permission denied). Showing matched lines only."
+    writer_cmd=(cat)
+  fi
 
-	log_info "Scanning last $lines container log lines for player activity (best-effort)"
-	if ! dc logs --no-color --timestamps --tail "$lines" "$SERVICE_NAME" 2>&1 |
-		sed 's/\.[0-9]*Z/Z/' |
-		grep -Ei 'lognet: join succeeded|lognet: leave:|saidfarewell|disconnectaccount' |
-		grep -iv 'server account was not found' |
-		"${writer_cmd[@]}"; then
-		log_warn "No player activity lines matched in the scanned log window."
-		return 0
-	fi
+  log_info "Scanning last $lines container log lines for player activity (best-effort)"
+  if ! dc logs --no-color --timestamps --tail "$lines" "$SERVICE_NAME" 2>&1 |
+    sed 's/\.[0-9]*Z/Z/' |
+    grep -Ei 'lognet: join succeeded|lognet: leave:|saidfarewell|disconnectaccount' |
+    grep -iv 'server account was not found' |
+    "${writer_cmd[@]}"; then
+    log_warn "No player activity lines matched in the scanned log window."
+    return 0
+  fi
 
-	if [[ "${writer_cmd[0]}" == "tee" ]]; then
-		log_ok "Player activity lines appended to $history_file"
-	else
-		log_info "Matched lines printed to stdout (history log file was not writable)."
-	fi
+  if [[ "${writer_cmd[0]}" == "tee" ]]; then
+    log_ok "Player activity lines appended to $history_file"
+  else
+    log_info "Matched lines printed to stdout (history log file was not writable)."
+  fi
 }
 
 player_events() {
-	local lines="${1:-4000}"
-	local events_file="$SCRIPT_DIR/logs/player-events.log"
-	local seen_file="$SCRIPT_DIR/state/player-events.seen"
-	local identities_file="$SCRIPT_DIR/state/player-identities.tsv"
-	local tmp_file
-	local log_tmp_file
-	local identity_tmp_file
-	local parsed_count=0
-	local new_count=0
-	local event_name=""
-	local event_id_key
-	declare -A known_names=()
+  local lines="${1:-4000}"
+  local events_file="$SCRIPT_DIR/logs/player-events.log"
+  local seen_file="$SCRIPT_DIR/state/player-events.seen"
+  local identities_file="$SCRIPT_DIR/state/player-identities.tsv"
+  local tmp_file
+  local log_tmp_file
+  local identity_tmp_file
+  local parsed_count=0
+  local new_count=0
+  local event_name=""
+  local event_id_key
+  declare -A known_names=()
 
-	if [[ ! "$lines" =~ ^[0-9]+$ ]] || [[ "$lines" -le 0 ]]; then
-		log_error "Invalid line count '$lines'. Use a positive integer."
-		exit 1
-	fi
+  if [[ ! "$lines" =~ ^[0-9]+$ ]] || [[ "$lines" -le 0 ]]; then
+    log_error "Invalid line count '$lines'. Use a positive integer."
+    exit 1
+  fi
 
-	mkdir -p "$SCRIPT_DIR/logs" "$SCRIPT_DIR/state"
-	touch "$events_file" "$seen_file" "$identities_file"
-	tmp_file="$(mktemp)"
-	log_tmp_file="$(mktemp)"
-	identity_tmp_file="$(mktemp)"
+  mkdir -p "$SCRIPT_DIR/logs" "$SCRIPT_DIR/state"
+  touch "$events_file" "$seen_file" "$identities_file"
+  tmp_file="$(mktemp)"
+  log_tmp_file="$(mktemp)"
+  identity_tmp_file="$(mktemp)"
 
-	log_info "Scanning last $lines container log lines for structured join/leave events"
-	dc logs --no-color --timestamps --tail "$lines" "$SERVICE_NAME" 2>&1 | sed 's/\.[0-9]*Z/Z/' >"$log_tmp_file"
+  log_info "Scanning last $lines container log lines for structured join/leave events"
+  dc logs --no-color --timestamps --tail "$lines" "$SERVICE_NAME" 2>&1 | sed 's/\.[0-9]*Z/Z/' >"$log_tmp_file"
 
-	# Update persistent identity map from account summary and login lines.
-	awk '
+  # Update persistent identity map from account summary and login lines.
+  awk '
         function trim(v) {
             gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
             return v
@@ -1064,19 +1064,19 @@ player_events() {
         }
     ' "$log_tmp_file" >"$identity_tmp_file"
 
-	if [[ -s "$identity_tmp_file" ]]; then
-		cat "$identities_file" "$identity_tmp_file" |
-			awk -F '\t' 'NF >= 2 { key=$1; name=$2; if (key != "" && name != "") m[key]=name } END { for (k in m) print k "\t" m[k] }' |
-			sort -t $'\t' -k1,1 >"$identities_file.tmp"
-		mv "$identities_file.tmp" "$identities_file"
-	fi
+  if [[ -s "$identity_tmp_file" ]]; then
+    cat "$identities_file" "$identity_tmp_file" |
+      awk -F '\t' 'NF >= 2 { key=$1; name=$2; if (key != "" && name != "") m[key]=name } END { for (k in m) print k "\t" m[k] }' |
+      sort -t $'\t' -k1,1 >"$identities_file.tmp"
+    mv "$identities_file.tmp" "$identities_file"
+  fi
 
-	while IFS=$'\t' read -r event_id_key event_name; do
-		[[ -z "$event_id_key" || -z "$event_name" ]] && continue
-		known_names["$event_id_key"]="$event_name"
-	done <"$identities_file"
+  while IFS=$'\t' read -r event_id_key event_name; do
+    [[ -z "$event_id_key" || -z "$event_name" ]] && continue
+    known_names["$event_id_key"]="$event_name"
+  done <"$identities_file"
 
-	awk '
+  awk '
             function is_invalid_player(player) {
                 player = toupper(player)
                 return (player == "" || player == "INVALID" || player == "NULL")
@@ -1356,81 +1356,81 @@ player_events() {
             }
         ' "$log_tmp_file" >"$tmp_file"
 
-	while IFS=$'\t' read -r event_ts event_type event_player event_reason event_name; do
-		[[ -z "$event_ts" ]] && continue
-		parsed_count=$((parsed_count + 1))
+  while IFS=$'\t' read -r event_ts event_type event_player event_reason event_name; do
+    [[ -z "$event_ts" ]] && continue
+    parsed_count=$((parsed_count + 1))
 
-		if [[ -z "$event_name" && -n "${known_names[$event_player]:-}" ]]; then
-			event_name="${known_names[$event_player]}"
-		fi
+    if [[ -z "$event_name" && -n "${known_names[$event_player]:-}" ]]; then
+      event_name="${known_names[$event_player]}"
+    fi
 
-		if [[ -n "$event_name" ]]; then
-			known_names["$event_player"]="$event_name"
-		fi
+    if [[ -n "$event_name" ]]; then
+      known_names["$event_player"]="$event_name"
+    fi
 
-		local event_id
-		local json_line
-		event_id="$event_ts|$event_type|$event_player|$event_reason"
+    local event_id
+    local json_line
+    event_id="$event_ts|$event_type|$event_player|$event_reason"
 
-		if grep -Fqx "$event_id" "$seen_file"; then
-			continue
-		fi
+    if grep -Fqx "$event_id" "$seen_file"; then
+      continue
+    fi
 
-		printf '%s\n' "$event_id" >>"$seen_file"
+    printf '%s\n' "$event_id" >>"$seen_file"
 
-		if command -v jq >/dev/null 2>&1; then
-			json_line="$(jq -cn \
-				--arg ts "$event_ts" \
-				--arg type "$event_type" \
-				--arg player "$event_player" \
-				--arg reason "$event_reason" \
-				--arg name "$event_name" \
-				'{ts:$ts, type:$type, player:$player, reason:$reason} + (if $name != "" then {name:$name} else {} end)')"
-		else
-			if [[ -n "$event_name" ]]; then
-				json_line="{\"ts\":\"$(json_escape "$event_ts")\",\"type\":\"$(json_escape "$event_type")\",\"player\":\"$(json_escape "$event_player")\",\"reason\":\"$(json_escape "$event_reason")\",\"name\":\"$(json_escape "$event_name")\"}"
-			else
-				json_line="{\"ts\":\"$(json_escape "$event_ts")\",\"type\":\"$(json_escape "$event_type")\",\"player\":\"$(json_escape "$event_player")\",\"reason\":\"$(json_escape "$event_reason")\"}"
-			fi
-		fi
+    if command -v jq >/dev/null 2>&1; then
+      json_line="$(jq -cn \
+        --arg ts "$event_ts" \
+        --arg type "$event_type" \
+        --arg player "$event_player" \
+        --arg reason "$event_reason" \
+        --arg name "$event_name" \
+        '{ts:$ts, type:$type, player:$player, reason:$reason} + (if $name != "" then {name:$name} else {} end)')"
+    else
+      if [[ -n "$event_name" ]]; then
+        json_line="{\"ts\":\"$(json_escape "$event_ts")\",\"type\":\"$(json_escape "$event_type")\",\"player\":\"$(json_escape "$event_player")\",\"reason\":\"$(json_escape "$event_reason")\",\"name\":\"$(json_escape "$event_name")\"}"
+      else
+        json_line="{\"ts\":\"$(json_escape "$event_ts")\",\"type\":\"$(json_escape "$event_type")\",\"player\":\"$(json_escape "$event_player")\",\"reason\":\"$(json_escape "$event_reason")\"}"
+      fi
+    fi
 
-		printf '%s\n' "$json_line" | tee -a "$events_file"
-		new_count=$((new_count + 1))
-	done <"$tmp_file"
+    printf '%s\n' "$json_line" | tee -a "$events_file"
+    new_count=$((new_count + 1))
+  done <"$tmp_file"
 
-	: >"$identities_file.tmp"
-	for event_id_key in "${!known_names[@]}"; do
-		printf '%s\t%s\n' "$event_id_key" "${known_names[$event_id_key]}" >>"$identities_file.tmp"
-	done
-	sort -t $'\t' -k1,1 "$identities_file.tmp" >"$identities_file"
+  : >"$identities_file.tmp"
+  for event_id_key in "${!known_names[@]}"; do
+    printf '%s\t%s\n' "$event_id_key" "${known_names[$event_id_key]}" >>"$identities_file.tmp"
+  done
+  sort -t $'\t' -k1,1 "$identities_file.tmp" >"$identities_file"
 
-	rm -f "$tmp_file" "$log_tmp_file" "$identity_tmp_file" "$identities_file.tmp"
+  rm -f "$tmp_file" "$log_tmp_file" "$identity_tmp_file" "$identities_file.tmp"
 
-	if [[ "$parsed_count" -eq 0 ]]; then
-		log_warn "No join/leave patterns matched in the scanned log window."
-		return 0
-	fi
+  if [[ "$parsed_count" -eq 0 ]]; then
+    log_warn "No join/leave patterns matched in the scanned log window."
+    return 0
+  fi
 
-	if [[ "$new_count" -eq 0 ]]; then
-		log_info "No new unique events detected (all matched events were already recorded)."
-		return 0
-	fi
+  if [[ "$new_count" -eq 0 ]]; then
+    log_info "No new unique events detected (all matched events were already recorded)."
+    return 0
+  fi
 
-	log_ok "Appended $new_count new events to $events_file"
+  log_ok "Appended $new_count new events to $events_file"
 }
 
 run_activity() {
-	local mode="${1:-events}"
+  local mode="${1:-events}"
 
-	case "$mode" in
-	events)
-		player_events "${2:-4000}"
-		;;
-	history)
-		player_history "${2:-1200}"
-		;;
-	help | -h | --help)
-		cat <<EOF
+  case "$mode" in
+  events)
+    player_events "${2:-4000}"
+    ;;
+  history)
+    player_history "${2:-1200}"
+    ;;
+  help | -h | --help)
+    cat <<EOF
 Usage:
   $SELF_NAME activity [events|history] [lines]
 
@@ -1439,1005 +1439,1005 @@ Examples:
   $SELF_NAME activity events 4000
   $SELF_NAME activity history 1200
 EOF
-		;;
-	*)
-		log_error "Unknown activity mode '$mode'. Use: events, history"
-		exit 1
-		;;
-	esac
+    ;;
+  *)
+    log_error "Unknown activity mode '$mode'. Use: events, history"
+    exit 1
+    ;;
+  esac
 }
 
 run_notify_command() {
-	local mode="${1:-run}"
+  local mode="${1:-run}"
 
-	case "$mode" in
-	run | watch | start | "")
-		run_notifier
-		;;
-	test)
-		shift || true
-		test_notifier "$@"
-		;;
-	status)
-		notify_status
-		;;
-	help | -h | --help)
-		cat <<EOF
+  case "$mode" in
+  run | watch | start | "")
+    run_notifier
+    ;;
+  test)
+    shift || true
+    test_notifier "$@"
+    ;;
+  status)
+    notify_status
+    ;;
+  help | -h | --help)
+    cat <<EOF
 Usage:
   $SELF_NAME notify
   $SELF_NAME notify test [message]
   $SELF_NAME notify status
 EOF
-		;;
-	*)
-		log_error "Unknown notify mode '$mode'. Use: notify, notify test [message], notify status"
-		exit 1
-		;;
-	esac
+    ;;
+  *)
+    log_error "Unknown notify mode '$mode'. Use: notify, notify test [message], notify status"
+    exit 1
+    ;;
+  esac
 }
 
 notify_status() {
-	local notify_pid_file="$SCRIPT_DIR/state/notify.pid"
-	local notify_log_file="$SCRIPT_DIR/logs/notify.log"
-	local notify_pid=""
-	local provider="${NOTIFY_PROVIDER:-$(dotenv_value NOTIFY_PROVIDER || true)}"
-	local gotify_url="${GOTIFY_URL:-$(dotenv_value GOTIFY_URL || true)}"
-	local gotify_token="${GOTIFY_TOKEN:-$(dotenv_value GOTIFY_TOKEN || true)}"
-	local discord_webhook_url="${DISCORD_WEBHOOK_URL:-$(dotenv_value DISCORD_WEBHOOK_URL || true)}"
-	local resolved_provider=""
+  local notify_pid_file="$SCRIPT_DIR/state/notify.pid"
+  local notify_log_file="$SCRIPT_DIR/logs/notify.log"
+  local notify_pid=""
+  local provider="${NOTIFY_PROVIDER:-$(dotenv_value NOTIFY_PROVIDER || true)}"
+  local gotify_url="${GOTIFY_URL:-$(dotenv_value GOTIFY_URL || true)}"
+  local gotify_token="${GOTIFY_TOKEN:-$(dotenv_value GOTIFY_TOKEN || true)}"
+  local discord_webhook_url="${DISCORD_WEBHOOK_URL:-$(dotenv_value DISCORD_WEBHOOK_URL || true)}"
+  local resolved_provider=""
 
-	provider="${provider:-auto}"
+  provider="${provider:-auto}"
 
-	if [[ -f "$notify_pid_file" ]]; then
-		notify_pid="$(head -n 1 "$notify_pid_file" 2>/dev/null || true)"
-		if [[ -n "$notify_pid" ]] && ! kill -0 "$notify_pid" >/dev/null 2>&1; then
-			rm -f "$notify_pid_file"
-			notify_pid=""
-		fi
-	fi
+  if [[ -f "$notify_pid_file" ]]; then
+    notify_pid="$(head -n 1 "$notify_pid_file" 2>/dev/null || true)"
+    if [[ -n "$notify_pid" ]] && ! kill -0 "$notify_pid" >/dev/null 2>&1; then
+      rm -f "$notify_pid_file"
+      notify_pid=""
+    fi
+  fi
 
-	if [[ -z "$notify_pid" ]]; then
-		notify_pid="$(pgrep -f "$SCRIPT_DIR/notify.sh" | head -n 1 || true)"
-		if [[ -n "$notify_pid" ]]; then
-			mkdir -p "$(dirname "$notify_pid_file")"
-			printf '%s\n' "$notify_pid" >"$notify_pid_file"
-		fi
-	fi
+  if [[ -z "$notify_pid" ]]; then
+    notify_pid="$(pgrep -f "$SCRIPT_DIR/notify.sh" | head -n 1 || true)"
+    if [[ -n "$notify_pid" ]]; then
+      mkdir -p "$(dirname "$notify_pid_file")"
+      printf '%s\n' "$notify_pid" >"$notify_pid_file"
+    fi
+  fi
 
-	if [[ "$provider" == "auto" ]]; then
-		if [[ -n "$gotify_url" && -n "$gotify_token" ]]; then
-			resolved_provider="gotify"
-		elif [[ -n "$discord_webhook_url" ]]; then
-			resolved_provider="discord"
-		else
-			resolved_provider="none"
-		fi
-	else
-		resolved_provider="$provider"
-	fi
+  if [[ "$provider" == "auto" ]]; then
+    if [[ -n "$gotify_url" && -n "$gotify_token" ]]; then
+      resolved_provider="gotify"
+    elif [[ -n "$discord_webhook_url" ]]; then
+      resolved_provider="discord"
+    else
+      resolved_provider="none"
+    fi
+  else
+    resolved_provider="$provider"
+  fi
 
-	if [[ -n "$notify_pid" ]]; then
-		log_ok "Activity notifier is running (PID $notify_pid)."
-	else
-		log_warn "Activity notifier is not running."
-	fi
+  if [[ -n "$notify_pid" ]]; then
+    log_ok "Activity notifier is running (PID $notify_pid)."
+  else
+    log_warn "Activity notifier is not running."
+  fi
 
-	log_info "Notify provider: $provider (resolved: $resolved_provider)"
-	log_info "Notify log file: $notify_log_file"
+  log_info "Notify provider: $provider (resolved: $resolved_provider)"
+  log_info "Notify log file: $notify_log_file"
 
-	if [[ -f "$notify_log_file" ]]; then
-		log_info "Last notifier log lines:"
-		tail -n 10 "$notify_log_file"
-	fi
+  if [[ -f "$notify_log_file" ]]; then
+    log_info "Last notifier log lines:"
+    tail -n 10 "$notify_log_file"
+  fi
 }
 
 run_notifier() {
-	local choice
-	local notify_pid_file="$SCRIPT_DIR/state/notify.pid"
-	local notify_log_file="$SCRIPT_DIR/logs/notify.log"
-	local notify_pid=""
-	local -a notifier_pids=()
-	local pid
+  local choice
+  local notify_pid_file="$SCRIPT_DIR/state/notify.pid"
+  local notify_log_file="$SCRIPT_DIR/logs/notify.log"
+  local notify_pid=""
+  local -a notifier_pids=()
+  local pid
 
-	if [[ -f "$notify_pid_file" ]]; then
-		notify_pid="$(head -n 1 "$notify_pid_file" 2>/dev/null || true)"
-		if [[ -n "$notify_pid" ]] && ! kill -0 "$notify_pid" >/dev/null 2>&1; then
-			rm -f "$notify_pid_file"
-			notify_pid=""
-		fi
-	fi
+  if [[ -f "$notify_pid_file" ]]; then
+    notify_pid="$(head -n 1 "$notify_pid_file" 2>/dev/null || true)"
+    if [[ -n "$notify_pid" ]] && ! kill -0 "$notify_pid" >/dev/null 2>&1; then
+      rm -f "$notify_pid_file"
+      notify_pid=""
+    fi
+  fi
 
-	# Fallback detection for old runs started before PID tracking was added.
-	if [[ -z "$notify_pid" ]]; then
-		notify_pid="$(pgrep -f "$SCRIPT_DIR/notify.sh" | head -n 1 || true)"
-		if [[ -n "$notify_pid" ]]; then
-			mkdir -p "$(dirname "$notify_pid_file")"
-			printf '%s\n' "$notify_pid" >"$notify_pid_file"
-		fi
-	fi
+  # Fallback detection for old runs started before PID tracking was added.
+  if [[ -z "$notify_pid" ]]; then
+    notify_pid="$(pgrep -f "$SCRIPT_DIR/notify.sh" | head -n 1 || true)"
+    if [[ -n "$notify_pid" ]]; then
+      mkdir -p "$(dirname "$notify_pid_file")"
+      printf '%s\n' "$notify_pid" >"$notify_pid_file"
+    fi
+  fi
 
-	if [[ ! -t 0 ]]; then
-		if [[ -n "$notify_pid" ]]; then
-			log_info "Activity notifier is already running in background (PID $notify_pid)."
-			return 0
-		fi
-		log_info "Starting activity notifier in foreground (non-interactive shell)"
-		exec "$SCRIPT_DIR/notify.sh"
-	fi
+  if [[ ! -t 0 ]]; then
+    if [[ -n "$notify_pid" ]]; then
+      log_info "Activity notifier is already running in background (PID $notify_pid)."
+      return 0
+    fi
+    log_info "Starting activity notifier in foreground (non-interactive shell)"
+    exec "$SCRIPT_DIR/notify.sh"
+  fi
 
-	if [[ -n "$notify_pid" ]]; then
-		echo "[windrose] Activity notifier is already running in background (PID $notify_pid)."
-		read -r -p "$(prompt_text "Stop it now? ${_COLOR_YELLOW}[y/N]${_COLOR_RESET}: ")" choice
+  if [[ -n "$notify_pid" ]]; then
+    echo "[windrose] Activity notifier is already running in background (PID $notify_pid)."
+    read -r -p "$(prompt_text "Stop it now? ${_COLOR_YELLOW}[y/N]${_COLOR_RESET}: ")" choice
 
-		case "${choice,,}" in
-		y | yes)
-			if [[ -n "$notify_pid" ]]; then
-				notifier_pids+=("$notify_pid")
-			fi
+    case "${choice,,}" in
+    y | yes)
+      if [[ -n "$notify_pid" ]]; then
+        notifier_pids+=("$notify_pid")
+      fi
 
-			while IFS= read -r pid; do
-				[[ -z "$pid" ]] && continue
-				if [[ " ${notifier_pids[*]} " != *" $pid "* ]]; then
-					notifier_pids+=("$pid")
-				fi
-			done < <(pgrep -f "$SCRIPT_DIR/notify.sh" || true)
+      while IFS= read -r pid; do
+        [[ -z "$pid" ]] && continue
+        if [[ " ${notifier_pids[*]} " != *" $pid "* ]]; then
+          notifier_pids+=("$pid")
+        fi
+      done < <(pgrep -f "$SCRIPT_DIR/notify.sh" || true)
 
-			if [[ "${#notifier_pids[@]}" -eq 0 ]]; then
-				rm -f "$notify_pid_file"
-				log_warn "Notifier process is no longer running."
-				return 0
-			fi
+      if [[ "${#notifier_pids[@]}" -eq 0 ]]; then
+        rm -f "$notify_pid_file"
+        log_warn "Notifier process is no longer running."
+        return 0
+      fi
 
-			log_step "Stopping activity notifier"
-			for pid in "${notifier_pids[@]}"; do
-				kill "$pid" >/dev/null 2>&1 || true
-			done
+      log_step "Stopping activity notifier"
+      for pid in "${notifier_pids[@]}"; do
+        kill "$pid" >/dev/null 2>&1 || true
+      done
 
-			for _ in $(seq 1 20); do
-				local still_running=false
+      for _ in $(seq 1 20); do
+        local still_running=false
 
-				for pid in "${notifier_pids[@]}"; do
-					if kill -0 "$pid" >/dev/null 2>&1; then
-						still_running=true
-						break
-					fi
-				done
+        for pid in "${notifier_pids[@]}"; do
+          if kill -0 "$pid" >/dev/null 2>&1; then
+            still_running=true
+            break
+          fi
+        done
 
-				if [[ "$still_running" == "false" ]]; then
-					break
-				fi
+        if [[ "$still_running" == "false" ]]; then
+          break
+        fi
 
-				sleep 0.1
-			done
+        sleep 0.1
+      done
 
-			for pid in "${notifier_pids[@]}"; do
-				if kill -0 "$pid" >/dev/null 2>&1; then
-					kill -9 "$pid" >/dev/null 2>&1 || true
-				fi
-			done
+      for pid in "${notifier_pids[@]}"; do
+        if kill -0 "$pid" >/dev/null 2>&1; then
+          kill -9 "$pid" >/dev/null 2>&1 || true
+        fi
+      done
 
-			for pid in "${notifier_pids[@]}"; do
-				if kill -0 "$pid" >/dev/null 2>&1; then
-					log_step_failed
-					log_error "Notifier did not stop cleanly (PID $pid)."
-					exit 1
-				fi
-			done
+      for pid in "${notifier_pids[@]}"; do
+        if kill -0 "$pid" >/dev/null 2>&1; then
+          log_step_failed
+          log_error "Notifier did not stop cleanly (PID $pid)."
+          exit 1
+        fi
+      done
 
-			rm -f "$notify_pid_file"
-			log_step_done
-			log_ok "Notifier stopped."
-			return 0
-			;;
-		*)
-			log_info "Notifier left running in background."
-			return 0
-			;;
-		esac
-	fi
+      rm -f "$notify_pid_file"
+      log_step_done
+      log_ok "Notifier stopped."
+      return 0
+      ;;
+    *)
+      log_info "Notifier left running in background."
+      return 0
+      ;;
+    esac
+  fi
 
-	read -r -p "$(prompt_text "Run activity notifier in background? ${_COLOR_YELLOW}[y/N]${_COLOR_RESET}: ")" choice
+  read -r -p "$(prompt_text "Run activity notifier in background? ${_COLOR_YELLOW}[y/N]${_COLOR_RESET}: ")" choice
 
-	case "${choice,,}" in
-	y | yes)
-		mkdir -p "$(dirname "$notify_log_file")"
-		log_step "Starting activity notifier in background"
-		if nohup "$SCRIPT_DIR/notify.sh" >>"$notify_log_file" 2>&1 & then
-			notify_pid="$!"
-			printf '%s\n' "$notify_pid" >"$notify_pid_file"
-			log_step_done
-			log_ok "Notifier is running in background (PID $notify_pid)."
-			log_info "Log file: $notify_log_file"
-		else
-			log_step_failed
-			log_error "Failed to start notifier in background."
-			exit 1
-		fi
-		;;
-	*)
-		log_info "Starting activity notifier in foreground"
-		exec "$SCRIPT_DIR/notify.sh"
-		;;
-	esac
+  case "${choice,,}" in
+  y | yes)
+    mkdir -p "$(dirname "$notify_log_file")"
+    log_step "Starting activity notifier in background"
+    if nohup "$SCRIPT_DIR/notify.sh" >>"$notify_log_file" 2>&1 & then
+      notify_pid="$!"
+      printf '%s\n' "$notify_pid" >"$notify_pid_file"
+      log_step_done
+      log_ok "Notifier is running in background (PID $notify_pid)."
+      log_info "Log file: $notify_log_file"
+    else
+      log_step_failed
+      log_error "Failed to start notifier in background."
+      exit 1
+    fi
+    ;;
+  *)
+    log_info "Starting activity notifier in foreground"
+    exec "$SCRIPT_DIR/notify.sh"
+    ;;
+  esac
 }
 
 test_notifier() {
-	log_step "Sending test notification"
-	if ! "$SCRIPT_DIR/notify.sh" test "${*:-⚓ Test notification from Windrose server}"; then
-		log_step_failed
-		log_error "Failed to send test notification."
-		exit 1
-	fi
-	log_step_done
+  log_step "Sending test notification"
+  if ! "$SCRIPT_DIR/notify.sh" test "${*:-⚓ Test notification from Windrose server}"; then
+    log_step_failed
+    log_error "Failed to send test notification."
+    exit 1
+  fi
+  log_step_done
 }
 
 backup_server() {
-	local was_running=""
-	local backup_exit=0
-	local notify_success notify_fail
+  local was_running=""
+  local backup_exit=0
+  local notify_success notify_fail
 
-	notify_success="${BACKUP_NOTIFY_SUCCESS:-$(dotenv_value BACKUP_NOTIFY_SUCCESS || true)}"
-	notify_fail="${BACKUP_NOTIFY_FAIL:-$(dotenv_value BACKUP_NOTIFY_FAIL || true)}"
-	notify_success="${notify_success:-false}"
-	notify_fail="${notify_fail:-true}"
-	local discord_upload
-	discord_upload="${BACKUP_DISCORD_UPLOAD:-$(dotenv_value BACKUP_DISCORD_UPLOAD || true)}"
-	discord_upload="${discord_upload:-false}"
+  notify_success="${BACKUP_NOTIFY_SUCCESS:-$(dotenv_value BACKUP_NOTIFY_SUCCESS || true)}"
+  notify_fail="${BACKUP_NOTIFY_FAIL:-$(dotenv_value BACKUP_NOTIFY_FAIL || true)}"
+  notify_success="${notify_success:-false}"
+  notify_fail="${notify_fail:-true}"
+  local discord_upload
+  discord_upload="${BACKUP_DISCORD_UPLOAD:-$(dotenv_value BACKUP_DISCORD_UPLOAD || true)}"
+  discord_upload="${discord_upload:-false}"
 
-	local backup_scope
-	backup_scope="${BACKUP_SCOPE:-$(dotenv_value BACKUP_SCOPE || true)}"
-	backup_scope="${backup_scope:-full}"
+  local backup_scope
+  backup_scope="${BACKUP_SCOPE:-$(dotenv_value BACKUP_SCOPE || true)}"
+  backup_scope="${backup_scope:-full}"
 
-	local scope_label
-	case "$backup_scope" in
-	full) scope_label="full backup" ;;
-	save) scope_label="save backup" ;;
-	both) scope_label="full + save backup" ;;
-	*) scope_label="backup" ;;
-	esac
+  local scope_label
+  case "$backup_scope" in
+  full) scope_label="full backup" ;;
+  save) scope_label="save backup" ;;
+  both) scope_label="full + save backup" ;;
+  *) scope_label="backup" ;;
+  esac
 
-	if dc ps --status running --services 2>/dev/null | grep -Fx "$SERVICE_NAME" >/dev/null 2>&1; then
-		was_running="yes"
-		log_step "Stopping server for a consistent $scope_label"
-		if ! dc stop "$SERVICE_NAME" >/dev/null 2>&1; then
-			log_step_failed
-			log_error "Failed to stop container before backup."
-			return 1
-		fi
-		log_step_done
-	fi
+  if dc ps --status running --services 2>/dev/null | grep -Fx "$SERVICE_NAME" >/dev/null 2>&1; then
+    was_running="yes"
+    log_step "Stopping server for a consistent $scope_label"
+    if ! dc stop "$SERVICE_NAME" >/dev/null 2>&1; then
+      log_step_failed
+      log_error "Failed to stop container before backup."
+      return 1
+    fi
+    log_step_done
+  fi
 
-	if [[ ! -f "$SCRIPT_DIR/backup.sh" ]]; then
-		log_error "backup script not found at $SCRIPT_DIR/backup.sh"
-		backup_exit=1
-	elif bash "$SCRIPT_DIR/backup.sh"; then
-		backup_exit=0
-	else
-		backup_exit=$?
-	fi
+  if [[ ! -f "$SCRIPT_DIR/backup.sh" ]]; then
+    log_error "backup script not found at $SCRIPT_DIR/backup.sh"
+    backup_exit=1
+  elif bash "$SCRIPT_DIR/backup.sh"; then
+    backup_exit=0
+  else
+    backup_exit=$?
+  fi
 
-	if [[ -n "$was_running" ]]; then
-		log_step "Starting server again"
-		if ! dc up -d >/dev/null 2>&1; then
-			log_step_failed
-			log_error "Failed to start container after backup."
-			backup_exit=1
-		else
-			log_step_done
-		fi
-	fi
+  if [[ -n "$was_running" ]]; then
+    log_step "Starting server again"
+    if ! dc up -d >/dev/null 2>&1; then
+      log_step_failed
+      log_error "Failed to start container after backup."
+      backup_exit=1
+    else
+      log_step_done
+    fi
+  fi
 
-	if [[ "$backup_exit" -eq 0 && "$notify_success" == "true" ]]; then
-		"$SCRIPT_DIR/notify.sh" test "⚓ Windrose backup finished successfully on $(hostname -s)." >/dev/null 2>&1 || true
-	fi
+  if [[ "$backup_exit" -eq 0 && "$notify_success" == "true" ]]; then
+    "$SCRIPT_DIR/notify.sh" test "⚓ Windrose backup finished successfully on $(hostname -s)." >/dev/null 2>&1 || true
+  fi
 
-	if [[ "$backup_exit" -eq 0 && "$discord_upload" == "true" ]]; then
-		upload_backup_to_discord || true
-	fi
+  if [[ "$backup_exit" -eq 0 && "$discord_upload" == "true" ]]; then
+    upload_backup_to_discord || true
+  fi
 
-	if [[ "$backup_exit" -ne 0 && "$notify_fail" == "true" ]]; then
-		"$SCRIPT_DIR/notify.sh" test "⚓ Windrose backup failed on $(hostname -s) (exit=$backup_exit)." >/dev/null 2>&1 || true
-	fi
+  if [[ "$backup_exit" -ne 0 && "$notify_fail" == "true" ]]; then
+    "$SCRIPT_DIR/notify.sh" test "⚓ Windrose backup failed on $(hostname -s) (exit=$backup_exit)." >/dev/null 2>&1 || true
+  fi
 
-	return "$backup_exit"
+  return "$backup_exit"
 }
 
 upload_backup_to_discord() {
-	local discord_url backup_dir latest_file file_size http_code backup_scope
+  local discord_url backup_dir latest_file file_size http_code backup_scope
 
-	discord_url="${DISCORD_WEBHOOK_URL:-$(dotenv_value DISCORD_WEBHOOK_URL || true)}"
-	if [[ -z "$discord_url" ]]; then
-		log_warn "DISCORD_WEBHOOK_URL not set, skipping Discord upload."
-		return 0
-	fi
+  discord_url="${DISCORD_WEBHOOK_URL:-$(dotenv_value DISCORD_WEBHOOK_URL || true)}"
+  if [[ -z "$discord_url" ]]; then
+    log_warn "DISCORD_WEBHOOK_URL not set, skipping Discord upload."
+    return 0
+  fi
 
-	backup_dir="${BACKUP_DIR:-$(dotenv_value BACKUP_DIR || true)}"
-	backup_dir="${backup_dir:-$SCRIPT_DIR/backups}"
+  backup_dir="${BACKUP_DIR:-$(dotenv_value BACKUP_DIR || true)}"
+  backup_dir="${backup_dir:-$SCRIPT_DIR/backups}"
 
-	backup_scope="${BACKUP_SCOPE:-$(dotenv_value BACKUP_SCOPE || true)}"
-	backup_scope="${backup_scope:-full}"
+  backup_scope="${BACKUP_SCOPE:-$(dotenv_value BACKUP_SCOPE || true)}"
+  backup_scope="${backup_scope:-full}"
 
-	if [[ "$backup_scope" == "full" ]]; then
-		log_info "BACKUP_SCOPE=full, skipping Discord upload (only save backups are uploaded)."
-		return 0
-	fi
+  if [[ "$backup_scope" == "full" ]]; then
+    log_info "BACKUP_SCOPE=full, skipping Discord upload (only save backups are uploaded)."
+    return 0
+  fi
 
-	if [[ "$backup_scope" != "save" && "$backup_scope" != "both" ]]; then
-		log_warn "unsupported BACKUP_SCOPE '$backup_scope', skipping Discord upload."
-		return 0
-	fi
+  if [[ "$backup_scope" != "save" && "$backup_scope" != "both" ]]; then
+    log_warn "unsupported BACKUP_SCOPE '$backup_scope', skipping Discord upload."
+    return 0
+  fi
 
-	latest_file="$(find "$backup_dir" -maxdepth 1 -type f \( -name 'windrose-backup-save-*.tar.gz' -o -name 'windrose-backup-save-*.zip' \) -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -1 | cut -d' ' -f2-)"
-	if [[ -z "$latest_file" ]]; then
-		log_warn "no save backup file found for Discord upload."
-		return 0
-	fi
+  latest_file="$(find "$backup_dir" -maxdepth 1 -type f \( -name 'windrose-backup-save-*.tar.gz' -o -name 'windrose-backup-save-*.zip' \) -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -1 | cut -d' ' -f2-)"
+  if [[ -z "$latest_file" ]]; then
+    log_warn "no save backup file found for Discord upload."
+    return 0
+  fi
 
-	file_size="$(stat -c '%s' "$latest_file" 2>/dev/null || echo 0)"
-	local max_discord_size=$((25 * 1024 * 1024))
-	if [[ "$file_size" -gt "$max_discord_size" ]]; then
-		log_warn "backup exceeds Discord 25 MB limit ($((file_size / 1024 / 1024)) MB), skipping upload."
-		return 0
-	fi
+  file_size="$(stat -c '%s' "$latest_file" 2>/dev/null || echo 0)"
+  local max_discord_size=$((25 * 1024 * 1024))
+  if [[ "$file_size" -gt "$max_discord_size" ]]; then
+    log_warn "backup exceeds Discord 25 MB limit ($((file_size / 1024 / 1024)) MB), skipping upload."
+    return 0
+  fi
 
-	log_step "Uploading $(basename "$latest_file") to Discord ($((file_size / 1024)) KB)"
-	http_code="$(curl -s -o /dev/null -w "%{http_code}" \
-		-F "file=@$latest_file" \
-		-F "payload_json={\"content\":\"⚓ Backup \`$(basename "$latest_file")\` — $(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
-		"$discord_url")"
+  log_step "Uploading $(basename "$latest_file") to Discord ($((file_size / 1024)) KB)"
+  http_code="$(curl -s -o /dev/null -w "%{http_code}" \
+    -F "file=@$latest_file" \
+    -F "payload_json={\"content\":\"⚓ Backup \`$(basename "$latest_file")\` — $(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
+    "$discord_url")"
 
-	if [[ "$http_code" =~ ^2 ]]; then
-		log_step_done
-	else
-		echo -e " ${_COLOR_RED}FAILED (HTTP $http_code)${_COLOR_RESET}"
-	fi
+  if [[ "$http_code" =~ ^2 ]]; then
+    log_step_done
+  else
+    echo -e " ${_COLOR_RED}FAILED (HTTP $http_code)${_COLOR_RESET}"
+  fi
 }
 
 install_backup_cron() {
-	local schedule="${1:-0 6 * * *}"
-	local backup_cmd="$SCRIPT_DIR/windrose backup"
-	local backup_log_dir="$SCRIPT_DIR/logs"
-	local backup_log_file="$backup_log_dir/backup.log"
-	local cron_tag="# windrose-backup-job"
-	local cron_cmd
-	local existing_cron filtered_cron
-	local had_legacy_entry=""
-	local result_message
+  local schedule="${1:-0 6 * * *}"
+  local backup_cmd="$SCRIPT_DIR/windrose backup"
+  local backup_log_dir="$SCRIPT_DIR/logs"
+  local backup_log_file="$backup_log_dir/backup.log"
+  local cron_tag="# windrose-backup-job"
+  local cron_cmd
+  local existing_cron filtered_cron
+  local had_legacy_entry=""
+  local result_message
 
-	if [[ ! -x "$SCRIPT_DIR/windrose" ]]; then
-		backup_cmd="$SCRIPT_DIR/serverctl.sh backup"
-	fi
+  if [[ ! -x "$SCRIPT_DIR/windrose" ]]; then
+    backup_cmd="$SCRIPT_DIR/serverctl.sh backup"
+  fi
 
-	mkdir -p "$backup_log_dir"
+  mkdir -p "$backup_log_dir"
 
-	cron_cmd="echo \"[\$(date -Ins)] backup job started\"; if $backup_cmd; then echo \"[\$(date -Ins)] backup job finished successfully\"; else rc=\$?; echo \"[\$(date -Ins)] backup job failed (exit=\$rc)\"; exit \$rc; fi"
-	local cron_line="$schedule /bin/bash -lc '$cron_cmd' >> $backup_log_file 2>&1 $cron_tag"
+  cron_cmd="echo \"[\$(date -Ins)] backup job started\"; if $backup_cmd; then echo \"[\$(date -Ins)] backup job finished successfully\"; else rc=\$?; echo \"[\$(date -Ins)] backup job failed (exit=\$rc)\"; exit \$rc; fi"
+  local cron_line="$schedule /bin/bash -lc '$cron_cmd' >> $backup_log_file 2>&1 $cron_tag"
 
-	if ! command -v crontab >/dev/null 2>&1; then
-		log_error "crontab is not available on this host."
-		exit 1
-	fi
+  if ! command -v crontab >/dev/null 2>&1; then
+    log_error "crontab is not available on this host."
+    exit 1
+  fi
 
-	existing_cron="$(crontab -l 2>/dev/null || true)"
+  existing_cron="$(crontab -l 2>/dev/null || true)"
 
-	if printf '%s\n' "$existing_cron" | grep -E "($SCRIPT_DIR/backup\.sh|$SCRIPT_DIR/windrose backup|$SCRIPT_DIR/serverctl\.sh backup|backup job started|windrose-backup-job)" >/dev/null 2>&1; then
-		had_legacy_entry="yes"
-	fi
+  if printf '%s\n' "$existing_cron" | grep -E "($SCRIPT_DIR/backup\.sh|$SCRIPT_DIR/windrose backup|$SCRIPT_DIR/serverctl\.sh backup|backup job started|windrose-backup-job)" >/dev/null 2>&1; then
+    had_legacy_entry="yes"
+  fi
 
-	filtered_cron="$(printf '%s\n' "$existing_cron" | grep -Ev "($SCRIPT_DIR/backup\.sh|$SCRIPT_DIR/windrose backup|$SCRIPT_DIR/serverctl\.sh backup|backup job started|windrose-backup-job)" || true)"
+  filtered_cron="$(printf '%s\n' "$existing_cron" | grep -Ev "($SCRIPT_DIR/backup\.sh|$SCRIPT_DIR/windrose backup|$SCRIPT_DIR/serverctl\.sh backup|backup job started|windrose-backup-job)" || true)"
 
-	log_step "Installing backup cron"
-	if ! {
-		if [[ -n "$filtered_cron" ]]; then
-			printf '%s\n' "$filtered_cron"
-		fi
-		echo "$cron_line"
-	} | crontab -; then
-		log_step_failed
-		log_error "Failed to install backup cron."
-		exit 1
-	fi
-	log_step_done
+  log_step "Installing backup cron"
+  if ! {
+    if [[ -n "$filtered_cron" ]]; then
+      printf '%s\n' "$filtered_cron"
+    fi
+    echo "$cron_line"
+  } | crontab -; then
+    log_step_failed
+    log_error "Failed to install backup cron."
+    exit 1
+  fi
+  log_step_done
 
-	if [[ -n "$had_legacy_entry" ]]; then
-		result_message="Updated legacy backup cron to use windrose backup:"
-	else
-		result_message="Installed backup cron:"
-	fi
-	log_ok "$result_message"
-	echo "$cron_line"
+  if [[ -n "$had_legacy_entry" ]]; then
+    result_message="Updated legacy backup cron to use windrose backup:"
+  else
+    result_message="Installed backup cron:"
+  fi
+  log_ok "$result_message"
+  echo "$cron_line"
 }
 
 pull_image() {
-	log_step "Pulling image defined in compose"
-	if ! dc pull; then
-		log_step_failed
-		log_error "Failed to pull image defined in compose."
-		exit 1
-	fi
-	log_step_done
+  log_step "Pulling image defined in compose"
+  if ! dc pull; then
+    log_step_failed
+    log_error "Failed to pull image defined in compose."
+    exit 1
+  fi
+  log_step_done
 }
 
 show_update_log() {
-	local lines="${1:-120}"
+  local lines="${1:-120}"
 
-	if [[ ! "$lines" =~ ^[0-9]+$ ]] || [[ "$lines" -le 0 ]]; then
-		log_error "Invalid line count '$lines'. Use a positive integer."
-		exit 1
-	fi
+  if [[ ! "$lines" =~ ^[0-9]+$ ]] || [[ "$lines" -le 0 ]]; then
+    log_error "Invalid line count '$lines'. Use a positive integer."
+    exit 1
+  fi
 
-	if [[ ! -f "$UPDATE_LOG_FILE" ]]; then
-		log_warn "Update log file not found: $UPDATE_LOG_FILE"
-		log_info "Run ./$SELF_NAME update first to generate logs."
-		return 0
-	fi
+  if [[ ! -f "$UPDATE_LOG_FILE" ]]; then
+    log_warn "Update log file not found: $UPDATE_LOG_FILE"
+    log_info "Run ./$SELF_NAME update first to generate logs."
+    return 0
+  fi
 
-	log_info "Showing last $lines lines from $UPDATE_LOG_FILE"
-	tail -n "$lines" "$UPDATE_LOG_FILE"
+  log_info "Showing last $lines lines from $UPDATE_LOG_FILE"
+  tail -n "$lines" "$UPDATE_LOG_FILE"
 }
 
 verify_update_runtime() {
-	local timeout="${UPDATE_VERIFY_TIMEOUT:-120}"
-	local container_name
-	local health="unknown"
+  local timeout="${UPDATE_VERIFY_TIMEOUT:-120}"
+  local container_name
+  local health="unknown"
 
-	if ! [[ "$timeout" =~ ^[0-9]+$ ]] || [[ "$timeout" -le 0 ]]; then
-		timeout=120
-	fi
+  if ! [[ "$timeout" =~ ^[0-9]+$ ]] || [[ "$timeout" -le 0 ]]; then
+    timeout=120
+  fi
 
-	container_name="$(dotenv_value CONTAINER_NAME || true)"
-	container_name="${container_name:-$SERVICE_NAME}"
+  container_name="$(dotenv_value CONTAINER_NAME || true)"
+  container_name="${container_name:-$SERVICE_NAME}"
 
-	log_step "Verifying service runtime after update (timeout ${timeout}s)"
+  log_step "Verifying service runtime after update (timeout ${timeout}s)"
 
-	for _ in $(seq 1 "$timeout"); do
-		if server_is_running; then
-			health="$("${DOCKER_CMD[@]}" inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container_name" 2>/dev/null || true)"
-			health="${health//$'\n'/}"
+  for _ in $(seq 1 "$timeout"); do
+    if server_is_running; then
+      health="$("${DOCKER_CMD[@]}" inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container_name" 2>/dev/null || true)"
+      health="${health//$'\n'/}"
 
-			if [[ "$health" == "healthy" || "$health" == "none" ]]; then
-				log_step_done
-				log_ok "Update verification passed (running=true, health=${health})."
-				append_update_log "Post-update verify: running=true health=${health}"
-				return 0
-			fi
+      if [[ "$health" == "healthy" || "$health" == "none" ]]; then
+        log_step_done
+        log_ok "Update verification passed (running=true, health=${health})."
+        append_update_log "Post-update verify: running=true health=${health}"
+        return 0
+      fi
 
-			if [[ "$health" == "unhealthy" ]]; then
-				log_step_failed
-				log_error "Container became unhealthy after update."
-				log_info "Run: ./$SELF_NAME logs"
-				log_info "Run: ./$SELF_NAME update-log"
-				append_update_log "Post-update verify: unhealthy"
-				return 1
-			fi
-		fi
+      if [[ "$health" == "unhealthy" ]]; then
+        log_step_failed
+        log_error "Container became unhealthy after update."
+        log_info "Run: ./$SELF_NAME logs"
+        log_info "Run: ./$SELF_NAME update-log"
+        append_update_log "Post-update verify: unhealthy"
+        return 1
+      fi
+    fi
 
-		sleep 1
-	done
+    sleep 1
+  done
 
-	log_step_failed
-	log_error "Update verification timed out after ${timeout}s."
-	log_info "Run: ./$SELF_NAME status"
-	log_info "Run: ./$SELF_NAME logs"
-	log_info "Run: ./$SELF_NAME update-log"
-	append_update_log "Post-update verify: timeout"
-	return 1
+  log_step_failed
+  log_error "Update verification timed out after ${timeout}s."
+  log_info "Run: ./$SELF_NAME status"
+  log_info "Run: ./$SELF_NAME logs"
+  log_info "Run: ./$SELF_NAME update-log"
+  append_update_log "Post-update verify: timeout"
+  return 1
 }
 
 diagnostics_bundle() {
-	local lines="${1:-300}"
-	local timestamp tmp_dir out_file
-	local container_name
+  local lines="${1:-300}"
+  local timestamp tmp_dir out_file
+  local container_name
 
-	if ! [[ "$lines" =~ ^[0-9]+$ ]] || [[ "$lines" -le 0 ]]; then
-		log_error "Invalid log line count '$lines'. Use a positive integer."
-		exit 1
-	fi
+  if ! [[ "$lines" =~ ^[0-9]+$ ]] || [[ "$lines" -le 0 ]]; then
+    log_error "Invalid log line count '$lines'. Use a positive integer."
+    exit 1
+  fi
 
-	local diagnostics_dir="$SCRIPT_DIR/diagnostics"
-	mkdir -p "$diagnostics_dir"
-	timestamp="$(date -u +%Y%m%d-%H%M%S)"
-	tmp_dir="$(mktemp -d "$diagnostics_dir/diagnostics-${timestamp}-XXXX")"
-	out_file="$diagnostics_dir/windrose-diagnostics-${timestamp}.tar.gz"
+  local diagnostics_dir="$SCRIPT_DIR/diagnostics"
+  mkdir -p "$diagnostics_dir"
+  timestamp="$(date -u +%Y%m%d-%H%M%S)"
+  tmp_dir="$(mktemp -d "$diagnostics_dir/diagnostics-${timestamp}-XXXX")"
+  out_file="$diagnostics_dir/windrose-diagnostics-${timestamp}.tar.gz"
 
-	log_step "Collecting diagnostics bundle"
+  log_step "Collecting diagnostics bundle"
 
-	{
-		echo "generated_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-		echo "mode=$ACTIVE_MODE"
-		echo "service=$SERVICE_NAME"
-		echo "compose_dir=$COMPOSE_DIR"
-	} >"$tmp_dir/summary.txt"
+  {
+    echo "generated_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "mode=$ACTIVE_MODE"
+    echo "service=$SERVICE_NAME"
+    echo "compose_dir=$COMPOSE_DIR"
+  } >"$tmp_dir/summary.txt"
 
-	dc ps >"$tmp_dir/compose-ps.txt" 2>&1 || true
-	dc config >"$tmp_dir/compose-config.txt" 2>&1 || true
-	dc logs --no-color --timestamps --tail "$lines" "$SERVICE_NAME" >"$tmp_dir/container-logs-tail.txt" 2>&1 || true
+  dc ps >"$tmp_dir/compose-ps.txt" 2>&1 || true
+  dc config >"$tmp_dir/compose-config.txt" 2>&1 || true
+  dc logs --no-color --timestamps --tail "$lines" "$SERVICE_NAME" >"$tmp_dir/container-logs-tail.txt" 2>&1 || true
 
-	if [[ -f "$UPDATE_LOG_FILE" ]]; then
-		tail -n "$lines" "$UPDATE_LOG_FILE" >"$tmp_dir/update-log-tail.txt" 2>&1 || true
-	fi
+  if [[ -f "$UPDATE_LOG_FILE" ]]; then
+    tail -n "$lines" "$UPDATE_LOG_FILE" >"$tmp_dir/update-log-tail.txt" 2>&1 || true
+  fi
 
-	status_json >"$tmp_dir/status.json" 2>&1 || true
-	if ! doctor_server >"$tmp_dir/doctor.txt" 2>&1; then
-		echo "doctor_exit=nonzero" >>"$tmp_dir/summary.txt"
-	fi
+  status_json >"$tmp_dir/status.json" 2>&1 || true
+  if ! doctor_server >"$tmp_dir/doctor.txt" 2>&1; then
+    echo "doctor_exit=nonzero" >>"$tmp_dir/summary.txt"
+  fi
 
-	if [[ -f "$SCRIPT_DIR/.env" ]]; then
-		sed -E 's/(TOKEN|PASSWORD|WEBHOOK|PASS)=.*/\1=REDACTED/gI' "$SCRIPT_DIR/.env" >"$tmp_dir/env-redacted.txt"
-	fi
+  if [[ -f "$SCRIPT_DIR/.env" ]]; then
+    sed -E 's/(TOKEN|PASSWORD|WEBHOOK|PASS)=.*/\1=REDACTED/gI' "$SCRIPT_DIR/.env" >"$tmp_dir/env-redacted.txt"
+  fi
 
-	container_name="$(dotenv_value CONTAINER_NAME || true)"
-	container_name="${container_name:-$SERVICE_NAME}"
-	"${DOCKER_CMD[@]}" inspect "$container_name" >"$tmp_dir/container-inspect.json" 2>/dev/null || true
+  container_name="$(dotenv_value CONTAINER_NAME || true)"
+  container_name="${container_name:-$SERVICE_NAME}"
+  "${DOCKER_CMD[@]}" inspect "$container_name" >"$tmp_dir/container-inspect.json" 2>/dev/null || true
 
-	if ! tar -czf "$out_file" -C "$tmp_dir" . >/dev/null 2>&1; then
-		log_step_failed
-		rm -rf "$tmp_dir"
-		log_error "Failed to create diagnostics bundle archive."
-		exit 1
-	fi
+  if ! tar -czf "$out_file" -C "$tmp_dir" . >/dev/null 2>&1; then
+    log_step_failed
+    rm -rf "$tmp_dir"
+    log_error "Failed to create diagnostics bundle archive."
+    exit 1
+  fi
 
-	rm -rf "$tmp_dir"
-	log_step_done
-	log_ok "Diagnostics bundle created: $out_file"
+  rm -rf "$tmp_dir"
+  log_step_done
+  log_ok "Diagnostics bundle created: $out_file"
 }
 
 update_server() {
-	local mode="${1:-}"
-	local notify_pid_file="$SCRIPT_DIR/state/notify.pid"
-	local notify_log_file="$SCRIPT_DIR/logs/notify.log"
-	local notifier_was_running=false
-	local notifier_pid=""
+  local mode="${1:-}"
+  local notify_pid_file="$SCRIPT_DIR/state/notify.pid"
+  local notify_log_file="$SCRIPT_DIR/logs/notify.log"
+  local notifier_was_running=false
+  local notifier_pid=""
 
-	if [[ -n "$mode" && "$mode" != "--force-down" ]]; then
-		log_error "Invalid update option '$mode'. Supported: --force-down"
-		exit 1
-	fi
+  if [[ -n "$mode" && "$mode" != "--force-down" ]]; then
+    log_error "Invalid update option '$mode'. Supported: --force-down"
+    exit 1
+  fi
 
-	if [[ -f "$notify_pid_file" ]]; then
-		notifier_pid="$(head -n 1 "$notify_pid_file" 2>/dev/null || true)"
-		if [[ -n "$notifier_pid" ]] && kill -0 "$notifier_pid" >/dev/null 2>&1; then
-			notifier_was_running=true
-		fi
-	fi
-	if [[ "$notifier_was_running" == false ]]; then
-		notifier_pid="$(pgrep -f "$SCRIPT_DIR/notify.sh" | head -n 1 || true)"
-		if [[ -n "$notifier_pid" ]]; then
-			notifier_was_running=true
-		fi
-	fi
+  if [[ -f "$notify_pid_file" ]]; then
+    notifier_pid="$(head -n 1 "$notify_pid_file" 2>/dev/null || true)"
+    if [[ -n "$notifier_pid" ]] && kill -0 "$notifier_pid" >/dev/null 2>&1; then
+      notifier_was_running=true
+    fi
+  fi
+  if [[ "$notifier_was_running" == false ]]; then
+    notifier_pid="$(pgrep -f "$SCRIPT_DIR/notify.sh" | head -n 1 || true)"
+    if [[ -n "$notifier_pid" ]]; then
+      notifier_was_running=true
+    fi
+  fi
 
-	mkdir -p "$UPDATE_LOG_DIR"
-	rotate_update_logs
-	append_update_log "Update started (mode=$ACTIVE_MODE, compose_dir=$COMPOSE_DIR, service=$SERVICE_NAME, strategy=${mode:---safe})"
+  mkdir -p "$UPDATE_LOG_DIR"
+  rotate_update_logs
+  append_update_log "Update started (mode=$ACTIVE_MODE, compose_dir=$COMPOSE_DIR, service=$SERVICE_NAME, strategy=${mode:---safe})"
 
-	if [[ -f "$SCRIPT_DIR/backups/player-events.log" ]]; then
-		log_warn "Old file layout detected in backups/. Run ./migrate-folders.sh once to reorganize logs and state files."
-	fi
+  if [[ -f "$SCRIPT_DIR/backups/player-events.log" ]]; then
+    log_warn "Old file layout detected in backups/. Run ./migrate-folders.sh once to reorganize logs and state files."
+  fi
 
-	log_info "Progress bar shows update stages, not byte-level download progress."
+  log_info "Progress bar shows update stages, not byte-level download progress."
 
-	render_progress_bar 0
+  render_progress_bar 0
 
-	if [[ "$mode" == "--force-down" ]]; then
-		append_update_log "Running (force-down): docker compose down"
-		if ! dc down >>"$UPDATE_LOG_FILE" 2>&1; then
-			printf '\n'
-			log_error "Failed to stop and remove the stack before update. See $UPDATE_LOG_FILE"
-			exit 1
-		fi
-		render_progress_bar 33
+  if [[ "$mode" == "--force-down" ]]; then
+    append_update_log "Running (force-down): docker compose down"
+    if ! dc down >>"$UPDATE_LOG_FILE" 2>&1; then
+      printf '\n'
+      log_error "Failed to stop and remove the stack before update. See $UPDATE_LOG_FILE"
+      exit 1
+    fi
+    render_progress_bar 33
 
-		append_update_log "Running (force-down): docker compose pull"
-		if ! dc pull >>"$UPDATE_LOG_FILE" 2>&1; then
-			printf '\n'
-			log_error "Failed to pull the selected image tag. See $UPDATE_LOG_FILE"
-			exit 1
-		fi
-		render_progress_bar 66
+    append_update_log "Running (force-down): docker compose pull"
+    if ! dc pull >>"$UPDATE_LOG_FILE" 2>&1; then
+      printf '\n'
+      log_error "Failed to pull the selected image tag. See $UPDATE_LOG_FILE"
+      exit 1
+    fi
+    render_progress_bar 66
 
-		append_update_log "Running (force-down): docker compose up -d"
-		if ! dc up -d >>"$UPDATE_LOG_FILE" 2>&1; then
-			printf '\n'
-			log_error "Failed to recreate the container after update. See $UPDATE_LOG_FILE"
-			exit 1
-		fi
-	else
-		append_update_log "Running (safe): docker compose pull"
-		if ! dc pull >>"$UPDATE_LOG_FILE" 2>&1; then
-			printf '\n'
-			log_error "Failed to pull the selected image tag. Existing container was left untouched. See $UPDATE_LOG_FILE"
-			exit 1
-		fi
-		render_progress_bar 50
+    append_update_log "Running (force-down): docker compose up -d"
+    if ! dc up -d >>"$UPDATE_LOG_FILE" 2>&1; then
+      printf '\n'
+      log_error "Failed to recreate the container after update. See $UPDATE_LOG_FILE"
+      exit 1
+    fi
+  else
+    append_update_log "Running (safe): docker compose pull"
+    if ! dc pull >>"$UPDATE_LOG_FILE" 2>&1; then
+      printf '\n'
+      log_error "Failed to pull the selected image tag. Existing container was left untouched. See $UPDATE_LOG_FILE"
+      exit 1
+    fi
+    render_progress_bar 50
 
-		append_update_log "Running (safe): docker compose up -d"
-		if ! dc up -d >>"$UPDATE_LOG_FILE" 2>&1; then
-			printf '\n'
-			log_error "Failed to recreate the container after update. See $UPDATE_LOG_FILE"
-			exit 1
-		fi
-	fi
+    append_update_log "Running (safe): docker compose up -d"
+    if ! dc up -d >>"$UPDATE_LOG_FILE" 2>&1; then
+      printf '\n'
+      log_error "Failed to recreate the container after update. See $UPDATE_LOG_FILE"
+      exit 1
+    fi
+  fi
 
-	if ! verify_update_runtime; then
-		append_update_log "Update finished with verification failure"
-		exit 1
-	fi
+  if ! verify_update_runtime; then
+    append_update_log "Update finished with verification failure"
+    exit 1
+  fi
 
-	render_progress_bar 100
-	log_ok "Server updated and verified."
-	log_info "Detailed update log: $UPDATE_LOG_FILE"
-	append_update_log "Update finished successfully"
+  render_progress_bar 100
+  log_ok "Server updated and verified."
+  log_info "Detailed update log: $UPDATE_LOG_FILE"
+  append_update_log "Update finished successfully"
 
-	if [[ "$notifier_was_running" == true ]]; then
-		log_step "Restarting activity notifier after update"
-		local old_pids=()
-		while IFS= read -r pid; do
-			[[ -n "$pid" ]] && old_pids+=("$pid")
-		done < <(pgrep -f "$SCRIPT_DIR/notify.sh" || true)
-		for pid in "${old_pids[@]}"; do
-			kill "$pid" >/dev/null 2>&1 || true
-		done
-		rm -f "$notify_pid_file"
-		sleep 0.5
-		mkdir -p "$(dirname "$notify_log_file")" "$(dirname "$notify_pid_file")"
-		if nohup "$SCRIPT_DIR/notify.sh" >>"$notify_log_file" 2>&1 & then
-			notify_new_pid="$!"
-			printf '%s\n' "$notify_new_pid" >"$notify_pid_file"
-			log_step_done
-			log_ok "Activity notifier restarted (PID $notify_new_pid)."
-		else
-			log_step_failed
-			log_warn "Failed to restart activity notifier. Run: ./windrose notify"
-		fi
-	fi
+  if [[ "$notifier_was_running" == true ]]; then
+    log_step "Restarting activity notifier after update"
+    local old_pids=()
+    while IFS= read -r pid; do
+      [[ -n "$pid" ]] && old_pids+=("$pid")
+    done < <(pgrep -f "$SCRIPT_DIR/notify.sh" || true)
+    for pid in "${old_pids[@]}"; do
+      kill "$pid" >/dev/null 2>&1 || true
+    done
+    rm -f "$notify_pid_file"
+    sleep 0.5
+    mkdir -p "$(dirname "$notify_log_file")" "$(dirname "$notify_pid_file")"
+    if nohup "$SCRIPT_DIR/notify.sh" >>"$notify_log_file" 2>&1 & then
+      notify_new_pid="$!"
+      printf '%s\n' "$notify_new_pid" >"$notify_pid_file"
+      log_step_done
+      log_ok "Activity notifier restarted (PID $notify_new_pid)."
+    else
+      log_step_failed
+      log_warn "Failed to restart activity notifier. Run: ./windrose notify"
+    fi
+  fi
 }
 
 _set_env_value() {
-	local key="$1"
-	local value="$2"
-	local env_file="$3"
-	local escaped
-	escaped="${value//\\/\\\\}"
-	escaped="${escaped//|/\\|}"
-	escaped="${escaped//&/\\&}"
-	sed -i "s|^${key}=.*|${key}=${escaped}|" "$env_file"
+  local key="$1"
+  local value="$2"
+  local env_file="$3"
+  local escaped
+  escaped="${value//\\/\\\\}"
+  escaped="${escaped//|/\\|}"
+  escaped="${escaped//&/\\&}"
+  sed -i "s|^${key}=.*|${key}=${escaped}|" "$env_file"
 }
 
 port_is_in_use() {
-	local port="$1"
+  local port="$1"
 
-	if ! command -v ss >/dev/null 2>&1; then
-		return 1
-	fi
+  if ! command -v ss >/dev/null 2>&1; then
+    return 1
+  fi
 
-	ss -H -lntu 2>/dev/null | awk '{print $5}' | grep -E "(^|[:\]])${port}$" >/dev/null 2>&1
+  ss -H -lntu 2>/dev/null | awk '{print $5}' | grep -E "(^|[:\]])${port}$" >/dev/null 2>&1
 }
 
 run_setup_host_precheck() {
-	local min_ram_mb=8192
-	local rec_ram_mb=16384
-	local min_disk_mb=8192
-	local total_ram_mb=0
-	local free_disk_mb=0
-	local disk_mount="unknown"
+  local min_ram_mb=8192
+  local rec_ram_mb=16384
+  local min_disk_mb=8192
+  local total_ram_mb=0
+  local free_disk_mb=0
+  local disk_mount="unknown"
 
-	log_step "Running host precheck (docker/compose/resources)"
+  log_step "Running host precheck (docker/compose/resources)"
 
-	if ! command -v docker >/dev/null 2>&1; then
-		log_step_failed
-		log_error "Docker is not installed or not in PATH. Install Docker 24+ and retry."
-		exit 1
-	fi
+  if ! command -v docker >/dev/null 2>&1; then
+    log_step_failed
+    log_error "Docker is not installed or not in PATH. Install Docker 24+ and retry."
+    exit 1
+  fi
 
-	if ! "${DOCKER_CMD[@]}" compose version >/dev/null 2>&1; then
-		log_step_failed
-		log_error "Docker Compose v2 is not available. Install the docker compose plugin and retry."
-		exit 1
-	fi
+  if ! "${DOCKER_CMD[@]}" compose version >/dev/null 2>&1; then
+    log_step_failed
+    log_error "Docker Compose v2 is not available. Install the docker compose plugin and retry."
+    exit 1
+  fi
 
-	if [[ -r /proc/meminfo ]]; then
-		total_ram_mb="$(awk '/^MemTotal:/ {printf "%d", $2/1024}' /proc/meminfo)"
-	fi
+  if [[ -r /proc/meminfo ]]; then
+    total_ram_mb="$(awk '/^MemTotal:/ {printf "%d", $2/1024}' /proc/meminfo)"
+  fi
 
-	if ! [[ "$total_ram_mb" =~ ^[0-9]+$ ]] || [[ "$total_ram_mb" -le 0 ]]; then
-		log_step_failed
-		log_error "Unable to detect host RAM. Check /proc/meminfo and retry."
-		exit 1
-	fi
+  if ! [[ "$total_ram_mb" =~ ^[0-9]+$ ]] || [[ "$total_ram_mb" -le 0 ]]; then
+    log_step_failed
+    log_error "Unable to detect host RAM. Check /proc/meminfo and retry."
+    exit 1
+  fi
 
-	read -r free_disk_mb disk_mount < <(df -Pm "$SCRIPT_DIR" | awk 'NR==2 {print $4, $6}')
-	if ! [[ "$free_disk_mb" =~ ^[0-9]+$ ]] || [[ "$free_disk_mb" -le 0 ]]; then
-		log_step_failed
-		log_error "Unable to detect free disk space for $SCRIPT_DIR."
-		exit 1
-	fi
+  read -r free_disk_mb disk_mount < <(df -Pm "$SCRIPT_DIR" | awk 'NR==2 {print $4, $6}')
+  if ! [[ "$free_disk_mb" =~ ^[0-9]+$ ]] || [[ "$free_disk_mb" -le 0 ]]; then
+    log_step_failed
+    log_error "Unable to detect free disk space for $SCRIPT_DIR."
+    exit 1
+  fi
 
-	if [[ "$total_ram_mb" -lt "$min_ram_mb" ]]; then
-		log_step_failed
-		log_error "Detected RAM: ${total_ram_mb} MB. Minimum required is ${min_ram_mb} MB."
-		exit 1
-	fi
+  if [[ "$total_ram_mb" -lt "$min_ram_mb" ]]; then
+    log_step_failed
+    log_error "Detected RAM: ${total_ram_mb} MB. Minimum required is ${min_ram_mb} MB."
+    exit 1
+  fi
 
-	if [[ "$free_disk_mb" -lt "$min_disk_mb" ]]; then
-		log_step_failed
-		log_error "Free disk on ${disk_mount}: ${free_disk_mb} MB. Minimum required is ${min_disk_mb} MB."
-		exit 1
-	fi
+  if [[ "$free_disk_mb" -lt "$min_disk_mb" ]]; then
+    log_step_failed
+    log_error "Free disk on ${disk_mount}: ${free_disk_mb} MB. Minimum required is ${min_disk_mb} MB."
+    exit 1
+  fi
 
-	log_step_done
-	log_info "Host resources: RAM=${total_ram_mb} MB, free disk on ${disk_mount}=${free_disk_mb} MB"
+  log_step_done
+  log_info "Host resources: RAM=${total_ram_mb} MB, free disk on ${disk_mount}=${free_disk_mb} MB"
 
-	if [[ "$total_ram_mb" -lt "$rec_ram_mb" ]]; then
-		log_warn "RAM below recommended ${rec_ram_mb} MB. 4-player sessions may be unstable under load."
-	fi
+  if [[ "$total_ram_mb" -lt "$rec_ram_mb" ]]; then
+    log_warn "RAM below recommended ${rec_ram_mb} MB. 4-player sessions may be unstable under load."
+  fi
 }
 
 setup_server() {
-	local env_file="$SCRIPT_DIR/.env"
-	local env_example="$SCRIPT_DIR/.env.example"
+  local env_file="$SCRIPT_DIR/.env"
+  local env_example="$SCRIPT_DIR/.env.example"
 
-	if [[ -f "$env_file" ]]; then
-		log_error ".env already exists at $env_file"
-		log_info "Setup is a one-off operation. Edit .env directly to change the configuration."
-		exit 1
-	fi
+  if [[ -f "$env_file" ]]; then
+    log_error ".env already exists at $env_file"
+    log_info "Setup is a one-off operation. Edit .env directly to change the configuration."
+    exit 1
+  fi
 
-	if [[ ! -f "$env_example" ]]; then
-		log_error ".env.example not found at $env_example"
-		exit 1
-	fi
+  if [[ ! -f "$env_example" ]]; then
+    log_error ".env.example not found at $env_example"
+    exit 1
+  fi
 
-	run_setup_host_precheck
+  run_setup_host_precheck
 
-	log_info "Windrose first-time setup"
-	echo
+  log_info "Windrose first-time setup"
+  echo
 
-	local start_after_choice start_after="no"
-	read -r -p "$(prompt_text "Start the server automatically after setup? ${_COLOR_YELLOW}[Y/n]${_COLOR_RESET}: ")" start_after_choice
-	case "${start_after_choice,,}" in
-	"" | y | yes) start_after="yes" ;;
-	*) start_after="no" ;;
-	esac
-	echo
+  local start_after_choice start_after="no"
+  read -r -p "$(prompt_text "Start the server automatically after setup? ${_COLOR_YELLOW}[Y/n]${_COLOR_RESET}: ")" start_after_choice
+  case "${start_after_choice,,}" in
+  "" | y | yes) start_after="yes" ;;
+  *) start_after="no" ;;
+  esac
+  echo
 
-	local server_name invite_code server_password max_players
-	local invite_code_mode="manual"
-	local enable_auto_backup_choice enable_auto_backup="no"
-	local backup_schedule backup_format backup_scope
-	local backup_discord_choice backup_discord_upload="no"
-	local discord_url=""
+  local server_name invite_code server_password max_players
+  local invite_code_mode="manual"
+  local enable_auto_backup_choice enable_auto_backup="no"
+  local backup_schedule backup_format backup_scope
+  local backup_discord_choice backup_discord_upload="no"
+  local discord_url=""
 
-	read -r -p "$(prompt_text "Server name [My Windrose Server]: ")" server_name
-	server_name="${server_name:-My Windrose Server}"
+  read -r -p "$(prompt_text "Server name [My Windrose Server]: ")" server_name
+  server_name="${server_name:-My Windrose Server}"
 
-	log_info "Leave invite code empty to let the server generate it automatically on first successful start."
-	read -r -p "$(prompt_text "Invite code (optional, alphanumeric, min 6 chars): ")" invite_code
-	if [[ -n "$invite_code" ]] && [[ ! "$invite_code" =~ ^[A-Za-z0-9]{6,}$ ]]; then
-		log_error "Invalid invite code. Use only letters and numbers, at least 6 characters."
-		exit 1
-	fi
-	if [[ -z "$invite_code" ]]; then
-		invite_code_mode="auto"
-	fi
+  log_info "Leave invite code empty to let the server generate it automatically on first successful start."
+  read -r -p "$(prompt_text "Invite code (optional, alphanumeric, min 6 chars): ")" invite_code
+  if [[ -n "$invite_code" ]] && [[ ! "$invite_code" =~ ^[A-Za-z0-9]{6,}$ ]]; then
+    log_error "Invalid invite code. Use only letters and numbers, at least 6 characters."
+    exit 1
+  fi
+  if [[ -z "$invite_code" ]]; then
+    invite_code_mode="auto"
+  fi
 
-	read -r -p "$(prompt_text "Server password (leave empty for none): ")" server_password
+  read -r -p "$(prompt_text "Server password (leave empty for none): ")" server_password
 
-	read -r -p "$(prompt_text "Max players [4]: ")" max_players
-	max_players="${max_players:-4}"
-	if [[ ! "$max_players" =~ ^[0-9]+$ ]] || [[ "$max_players" -le 0 ]]; then
-		log_error "Invalid max players value: $max_players"
-		exit 1
-	fi
+  read -r -p "$(prompt_text "Max players [4]: ")" max_players
+  max_players="${max_players:-4}"
+  if [[ ! "$max_players" =~ ^[0-9]+$ ]] || [[ "$max_players" -le 0 ]]; then
+    log_error "Invalid max players value: $max_players"
+    exit 1
+  fi
 
-	read -r -p "$(prompt_text "Enable automatic backup cron job? ${_COLOR_YELLOW}[y/N]${_COLOR_RESET}: ")" enable_auto_backup_choice
-	case "${enable_auto_backup_choice,,}" in
-	y | yes) enable_auto_backup="yes" ;;
-	*) enable_auto_backup="no" ;;
-	esac
+  read -r -p "$(prompt_text "Enable automatic backup cron job? ${_COLOR_YELLOW}[y/N]${_COLOR_RESET}: ")" enable_auto_backup_choice
+  case "${enable_auto_backup_choice,,}" in
+  y | yes) enable_auto_backup="yes" ;;
+  *) enable_auto_backup="no" ;;
+  esac
 
-	if [[ "$enable_auto_backup" == "yes" ]]; then
-		log_info "Default backup schedule is daily at 06:00 (cron: 0 6 * * *)."
-		read -r -p "$(prompt_text "Backup cron schedule [0 6 * * *]: ")" backup_schedule
-		backup_schedule="${backup_schedule:-0 6 * * *}"
-	fi
+  if [[ "$enable_auto_backup" == "yes" ]]; then
+    log_info "Default backup schedule is daily at 06:00 (cron: 0 6 * * *)."
+    read -r -p "$(prompt_text "Backup cron schedule [0 6 * * *]: ")" backup_schedule
+    backup_schedule="${backup_schedule:-0 6 * * *}"
+  fi
 
-	read -r -p "$(prompt_text "Backup format [tar.gz/zip] (default: tar.gz): ")" backup_format
-	backup_format="${backup_format:-tar.gz}"
-	if [[ "$backup_format" != "tar.gz" && "$backup_format" != "zip" ]]; then
-		log_error "Invalid backup format: $backup_format (allowed: tar.gz, zip)"
-		exit 1
-	fi
+  read -r -p "$(prompt_text "Backup format [tar.gz/zip] (default: tar.gz): ")" backup_format
+  backup_format="${backup_format:-tar.gz}"
+  if [[ "$backup_format" != "tar.gz" && "$backup_format" != "zip" ]]; then
+    log_error "Invalid backup format: $backup_format (allowed: tar.gz, zip)"
+    exit 1
+  fi
 
-	read -r -p "$(prompt_text "Backup scope [full/save/both] (default: full): ")" backup_scope
-	backup_scope="${backup_scope:-full}"
-	if [[ "$backup_scope" != "full" && "$backup_scope" != "save" && "$backup_scope" != "both" ]]; then
-		log_error "Invalid backup scope: $backup_scope (allowed: full, save, both)"
-		exit 1
-	fi
+  read -r -p "$(prompt_text "Backup scope [full/save/both] (default: full): ")" backup_scope
+  backup_scope="${backup_scope:-full}"
+  if [[ "$backup_scope" != "full" && "$backup_scope" != "save" && "$backup_scope" != "both" ]]; then
+    log_error "Invalid backup scope: $backup_scope (allowed: full, save, both)"
+    exit 1
+  fi
 
-	read -r -p "$(prompt_text "Upload save backup file to Discord webhook? ${_COLOR_YELLOW}[y/N]${_COLOR_RESET}: ")" backup_discord_choice
-	case "${backup_discord_choice,,}" in
-	y | yes) backup_discord_upload="yes" ;;
-	*) backup_discord_upload="no" ;;
-	esac
+  read -r -p "$(prompt_text "Upload save backup file to Discord webhook? ${_COLOR_YELLOW}[y/N]${_COLOR_RESET}: ")" backup_discord_choice
+  case "${backup_discord_choice,,}" in
+  y | yes) backup_discord_upload="yes" ;;
+  *) backup_discord_upload="no" ;;
+  esac
 
-	if [[ "$backup_discord_upload" == "yes" ]]; then
-		if [[ "$backup_scope" == "full" ]]; then
-			log_warn "Discord upload works only for save backups. Changing BACKUP_SCOPE from full to both."
-			backup_scope="both"
-		fi
-		read -r -p "$(prompt_text "Discord webhook URL (required for upload): ")" discord_url
-		if [[ -z "$discord_url" ]]; then
-			log_error "Discord webhook URL is required when Discord backup upload is enabled."
-			exit 1
-		fi
-	fi
+  if [[ "$backup_discord_upload" == "yes" ]]; then
+    if [[ "$backup_scope" == "full" ]]; then
+      log_warn "Discord upload works only for save backups. Changing BACKUP_SCOPE from full to both."
+      backup_scope="both"
+    fi
+    read -r -p "$(prompt_text "Discord webhook URL (required for upload): ")" discord_url
+    if [[ -z "$discord_url" ]]; then
+      log_error "Discord webhook URL is required when Discord backup upload is enabled."
+      exit 1
+    fi
+  fi
 
-	echo
+  echo
 
-	local detected_puid detected_pgid
-	detected_puid="$(id -u)"
-	detected_pgid="$(id -g)"
+  local detected_puid detected_pgid
+  detected_puid="$(id -u)"
+  detected_pgid="$(id -g)"
 
-	log_step "Creating .env from template"
-	cp "$env_example" "$env_file"
-	log_step_done
+  log_step "Creating .env from template"
+  cp "$env_example" "$env_file"
+  log_step_done
 
-	_set_env_value "SERVER_NAME" "$server_name" "$env_file"
-	_set_env_value "INVITE_CODE" "$invite_code" "$env_file"
-	_set_env_value "SERVER_PASSWORD" "$server_password" "$env_file"
-	_set_env_value "MAX_PLAYERS" "$max_players" "$env_file"
-	_set_env_value "PUID" "$detected_puid" "$env_file"
-	_set_env_value "PGID" "$detected_pgid" "$env_file"
-	_set_env_value "BACKUP_FORMAT" "$backup_format" "$env_file"
-	_set_env_value "BACKUP_SCOPE" "$backup_scope" "$env_file"
-	if [[ "$backup_discord_upload" == "yes" ]]; then
-		_set_env_value "BACKUP_DISCORD_UPLOAD" "true" "$env_file"
-	else
-		_set_env_value "BACKUP_DISCORD_UPLOAD" "false" "$env_file"
-	fi
-	if [[ -n "$discord_url" ]]; then
-		_set_env_value "DISCORD_WEBHOOK_URL" "$discord_url" "$env_file"
-	fi
+  _set_env_value "SERVER_NAME" "$server_name" "$env_file"
+  _set_env_value "INVITE_CODE" "$invite_code" "$env_file"
+  _set_env_value "SERVER_PASSWORD" "$server_password" "$env_file"
+  _set_env_value "MAX_PLAYERS" "$max_players" "$env_file"
+  _set_env_value "PUID" "$detected_puid" "$env_file"
+  _set_env_value "PGID" "$detected_pgid" "$env_file"
+  _set_env_value "BACKUP_FORMAT" "$backup_format" "$env_file"
+  _set_env_value "BACKUP_SCOPE" "$backup_scope" "$env_file"
+  if [[ "$backup_discord_upload" == "yes" ]]; then
+    _set_env_value "BACKUP_DISCORD_UPLOAD" "true" "$env_file"
+  else
+    _set_env_value "BACKUP_DISCORD_UPLOAD" "false" "$env_file"
+  fi
+  if [[ -n "$discord_url" ]]; then
+    _set_env_value "DISCORD_WEBHOOK_URL" "$discord_url" "$env_file"
+  fi
 
-	log_ok "Configuration written to $env_file"
-	echo
-	log_info "Summary:"
-	echo -e "  ${_COLOR_CYAN}Server name:${_COLOR_RESET}   $server_name"
-	echo -e "  ${_COLOR_CYAN}Invite code:${_COLOR_RESET}   ${invite_code:-(auto/empty)}"
-	echo -e "  ${_COLOR_CYAN}Password:${_COLOR_RESET}      ${server_password:-(none)}"
-	echo -e "  ${_COLOR_CYAN}Max players:${_COLOR_RESET}   $max_players"
-	echo -e "  ${_COLOR_CYAN}PUID/PGID:${_COLOR_RESET}     $detected_puid/$detected_pgid"
-	echo -e "  ${_COLOR_CYAN}Backup format:${_COLOR_RESET} $backup_format"
-	echo -e "  ${_COLOR_CYAN}Backup scope:${_COLOR_RESET}  $backup_scope"
-	if [[ "$enable_auto_backup" == "yes" ]]; then
-		echo -e "  ${_COLOR_CYAN}Backup cron:${_COLOR_RESET}   $backup_schedule"
-	else
-		echo -e "  ${_COLOR_CYAN}Backup cron:${_COLOR_RESET}   disabled"
-	fi
-	if [[ "$backup_discord_upload" == "yes" ]]; then
-		echo -e "  ${_COLOR_CYAN}Discord upload:${_COLOR_RESET} enabled"
-	else
-		echo -e "  ${_COLOR_CYAN}Discord upload:${_COLOR_RESET} disabled"
-	fi
-	echo
+  log_ok "Configuration written to $env_file"
+  echo
+  log_info "Summary:"
+  echo -e "  ${_COLOR_CYAN}Server name:${_COLOR_RESET}   $server_name"
+  echo -e "  ${_COLOR_CYAN}Invite code:${_COLOR_RESET}   ${invite_code:-(auto/empty)}"
+  echo -e "  ${_COLOR_CYAN}Password:${_COLOR_RESET}      ${server_password:-(none)}"
+  echo -e "  ${_COLOR_CYAN}Max players:${_COLOR_RESET}   $max_players"
+  echo -e "  ${_COLOR_CYAN}PUID/PGID:${_COLOR_RESET}     $detected_puid/$detected_pgid"
+  echo -e "  ${_COLOR_CYAN}Backup format:${_COLOR_RESET} $backup_format"
+  echo -e "  ${_COLOR_CYAN}Backup scope:${_COLOR_RESET}  $backup_scope"
+  if [[ "$enable_auto_backup" == "yes" ]]; then
+    echo -e "  ${_COLOR_CYAN}Backup cron:${_COLOR_RESET}   $backup_schedule"
+  else
+    echo -e "  ${_COLOR_CYAN}Backup cron:${_COLOR_RESET}   disabled"
+  fi
+  if [[ "$backup_discord_upload" == "yes" ]]; then
+    echo -e "  ${_COLOR_CYAN}Discord upload:${_COLOR_RESET} enabled"
+  else
+    echo -e "  ${_COLOR_CYAN}Discord upload:${_COLOR_RESET} disabled"
+  fi
+  echo
 
-	if [[ "$enable_auto_backup" == "yes" ]]; then
-		if command -v crontab >/dev/null 2>&1; then
-			install_backup_cron "$backup_schedule"
-		else
-			log_warn "crontab is not available on this host. Skipping automatic backup schedule setup."
-		fi
-	fi
+  if [[ "$enable_auto_backup" == "yes" ]]; then
+    if command -v crontab >/dev/null 2>&1; then
+      install_backup_cron "$backup_schedule"
+    else
+      log_warn "crontab is not available on this host. Skipping automatic backup schedule setup."
+    fi
+  fi
 
-	if [[ "$start_after" == "yes" ]]; then
-		local game_port query_port
-		local generated_invite_code=""
-		game_port="$(dotenv_value PORT || true)"
-		query_port="$(dotenv_value QUERYPORT || true)"
+  if [[ "$start_after" == "yes" ]]; then
+    local game_port query_port
+    local generated_invite_code=""
+    game_port="$(dotenv_value PORT || true)"
+    query_port="$(dotenv_value QUERYPORT || true)"
 
-		log_step "Running startup preflight checks"
-		if ! dc config -q >/dev/null 2>&1; then
-			log_step_failed
-			log_error "Docker Compose configuration is invalid. Fix compose/.env values and retry."
-			exit 1
-		fi
-		log_step_done
+    log_step "Running startup preflight checks"
+    if ! dc config -q >/dev/null 2>&1; then
+      log_step_failed
+      log_error "Docker Compose configuration is invalid. Fix compose/.env values and retry."
+      exit 1
+    fi
+    log_step_done
 
-		if [[ -n "$game_port" ]] && port_is_in_use "$game_port"; then
-			log_warn "Port $game_port is already in use on the host (PORT). Startup may fail."
-		fi
+    if [[ -n "$game_port" ]] && port_is_in_use "$game_port"; then
+      log_warn "Port $game_port is already in use on the host (PORT). Startup may fail."
+    fi
 
-		if [[ -n "$query_port" ]] && port_is_in_use "$query_port"; then
-			log_warn "Port $query_port is already in use on the host (QUERYPORT). Startup may fail."
-		fi
+    if [[ -n "$query_port" ]] && port_is_in_use "$query_port"; then
+      log_warn "Port $query_port is already in use on the host (QUERYPORT). Startup may fail."
+    fi
 
-		log_info "If LAN clients fail to connect while WAN works, see README: 'Troubleshooting -> LAN clients fail, WAN clients work'."
+    log_info "If LAN clients fail to connect while WAN works, see README: 'Troubleshooting -> LAN clients fail, WAN clients work'."
 
-		log_step "Pulling image"
-		if ! dc pull; then
-			log_step_failed
-			log_error "Failed to pull image. Check IMAGE_TAG in $env_file and try again."
-			exit 1
-		fi
-		log_step_done
+    log_step "Pulling image"
+    if ! dc pull; then
+      log_step_failed
+      log_error "Failed to pull image. Check IMAGE_TAG in $env_file and try again."
+      exit 1
+    fi
+    log_step_done
 
-		log_step "Starting server"
-		if ! dc up -d >/dev/null 2>&1; then
-			log_step_failed
-			log_error "Failed to start server."
-			exit 1
-		fi
-		log_step_done
-		log_ok "Server is starting. Check status with: ./$SELF_NAME status"
-		log_info "Follow logs with: ./$SELF_NAME logs"
+    log_step "Starting server"
+    if ! dc up -d >/dev/null 2>&1; then
+      log_step_failed
+      log_error "Failed to start server."
+      exit 1
+    fi
+    log_step_done
+    log_ok "Server is starting. Check status with: ./$SELF_NAME status"
+    log_info "Follow logs with: ./$SELF_NAME logs"
 
-		if [[ "$invite_code_mode" == "auto" ]]; then
-			if command -v jq >/dev/null 2>&1; then
-				log_info "Invite code was left empty, waiting for automatic generation..."
-				for _ in $(seq 1 90); do
-					generated_invite_code="$(jq -r '.ServerDescription_Persistent.InviteCode // .InviteCode // empty' "$SERVER_DESC_FILE" 2>/dev/null || true)"
-					if [[ -n "$generated_invite_code" && "$generated_invite_code" != "null" ]]; then
-						break
-					fi
-					sleep 1
-				done
+    if [[ "$invite_code_mode" == "auto" ]]; then
+      if command -v jq >/dev/null 2>&1; then
+        log_info "Invite code was left empty, waiting for automatic generation..."
+        for _ in $(seq 1 90); do
+          generated_invite_code="$(jq -r '.ServerDescription_Persistent.InviteCode // .InviteCode // empty' "$SERVER_DESC_FILE" 2>/dev/null || true)"
+          if [[ -n "$generated_invite_code" && "$generated_invite_code" != "null" ]]; then
+            break
+          fi
+          sleep 1
+        done
 
-				if [[ -n "$generated_invite_code" && "$generated_invite_code" != "null" ]]; then
-					log_ok "Generated invite code: $generated_invite_code"
-				else
-					log_warn "Invite code was not detected yet. Check $SERVER_DESC_FILE after the server finishes booting."
-				fi
-			else
-				log_info "Invite code was left empty. It will be generated automatically."
-				log_info "Check it in: $SERVER_DESC_FILE"
-			fi
-		fi
-	else
-		log_info "Start the server when ready: ./$SELF_NAME start"
-		if [[ "$invite_code_mode" == "auto" ]]; then
-			log_info "Invite code was left empty and will be generated on first successful start."
-			log_info "After startup, check it in: $SERVER_DESC_FILE"
-		fi
-	fi
+        if [[ -n "$generated_invite_code" && "$generated_invite_code" != "null" ]]; then
+          log_ok "Generated invite code: $generated_invite_code"
+        else
+          log_warn "Invite code was not detected yet. Check $SERVER_DESC_FILE after the server finishes booting."
+        fi
+      else
+        log_info "Invite code was left empty. It will be generated automatically."
+        log_info "Check it in: $SERVER_DESC_FILE"
+      fi
+    fi
+  else
+    log_info "Start the server when ready: ./$SELF_NAME start"
+    if [[ "$invite_code_mode" == "auto" ]]; then
+      log_info "Invite code was left empty and will be generated on first successful start."
+      log_info "After startup, check it in: $SERVER_DESC_FILE"
+    fi
+  fi
 }
 
 down_server() {
-	log_step "Stopping and removing the stack"
-	if ! dc down; then
-		log_step_failed
-		log_error "Failed to stop and remove the stack."
-		exit 1
-	fi
-	log_step_done
+  log_step "Stopping and removing the stack"
+  if ! dc down; then
+    log_step_failed
+    log_error "Failed to stop and remove the stack."
+    exit 1
+  fi
+  log_step_done
 }
 
 install_self() {
-	local target="${1:-/usr/local/bin/windrosectl}"
-	local target_dir
-	target_dir="$(dirname "$target")"
+  local target="${1:-/usr/local/bin/windrosectl}"
+  local target_dir
+  target_dir="$(dirname "$target")"
 
-	log_step "Installing launcher at $target"
-	mkdir -p "$target_dir"
-	if ! cat >"$target" <<EOF; then
+  log_step "Installing launcher at $target"
+  mkdir -p "$target_dir"
+  if ! cat >"$target" <<EOF; then
 #!/usr/bin/env bash
 set -euo pipefail
 exec "$SCRIPT_DIR/windrose" "\$@"
 EOF
-		log_step_failed
-		log_error "Failed to write launcher to $target"
-		exit 1
-	fi
+    log_step_failed
+    log_error "Failed to write launcher to $target"
+    exit 1
+  fi
 
-	if ! chmod +x "$target"; then
-		log_step_failed
-		log_error "Failed to make launcher executable at $target"
-		exit 1
-	fi
+  if ! chmod +x "$target"; then
+    log_step_failed
+    log_error "Failed to make launcher executable at $target"
+    exit 1
+  fi
 
-	log_step_done
-	log_ok "Installed launcher at $target"
+  log_step_done
+  log_ok "Installed launcher at $target"
 }
 
 init_docker_cmd
@@ -2447,90 +2447,90 @@ trap release_mutation_lock EXIT
 
 CMD="${1:-help}"
 if is_mutating_command "$CMD"; then
-	acquire_mutation_lock "$CMD"
+  acquire_mutation_lock "$CMD"
 fi
 
 case "$CMD" in
 setup)
-	setup_server
-	;;
+  setup_server
+  ;;
 start)
-	start_server
-	;;
+  start_server
+  ;;
 stop)
-	stop_server
-	;;
+  stop_server
+  ;;
 restart)
-	restart_server
-	;;
+  restart_server
+  ;;
 status | ps)
-	status_server
-	;;
+  status_server
+  ;;
 status-json)
-	status_json
-	;;
+  status_json
+  ;;
 doctor)
-	doctor_server
-	;;
+  doctor_server
+  ;;
 diagnostics)
-	diagnostics_bundle "${2:-300}"
-	;;
+  diagnostics_bundle "${2:-300}"
+  ;;
 logs)
-	follow_logs
-	;;
+  follow_logs
+  ;;
 activity)
-	shift || true
-	run_activity "$@"
-	;;
+  shift || true
+  run_activity "$@"
+  ;;
 player-history)
-	player_history "${2:-1200}"
-	;;
+  player_history "${2:-1200}"
+  ;;
 player-events)
-	player_events "${2:-4000}"
-	;;
+  player_events "${2:-4000}"
+  ;;
 worlds)
-	list_worlds
-	;;
+  list_worlds
+  ;;
 worlds-check)
-	check_worlds
-	;;
+  check_worlds
+  ;;
 switch)
-	switch_world
-	;;
+  switch_world
+  ;;
 notify)
-	shift || true
-	run_notify_command "$@"
-	;;
+  shift || true
+  run_notify_command "$@"
+  ;;
 test-notify)
-	shift || true
-	test_notifier "$@"
-	;;
+  shift || true
+  test_notifier "$@"
+  ;;
 backup)
-	backup_server
-	;;
+  backup_server
+  ;;
 install-backup-cron)
-	install_backup_cron "${2:-}"
-	;;
+  install_backup_cron "${2:-}"
+  ;;
 pull)
-	pull_image
-	;;
+  pull_image
+  ;;
 update)
-	update_server "${2:-}"
-	;;
+  update_server "${2:-}"
+  ;;
 update-log)
-	show_update_log "${2:-120}"
-	;;
+  show_update_log "${2:-120}"
+  ;;
 down)
-	down_server
-	;;
+  down_server
+  ;;
 install)
-	install_self "${2:-}"
-	;;
+  install_self "${2:-}"
+  ;;
 help | -h | --help | "")
-	usage
-	;;
+  usage
+  ;;
 *)
-	usage
-	exit 1
-	;;
+  usage
+  exit 1
+  ;;
 esac
