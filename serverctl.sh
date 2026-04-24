@@ -193,6 +193,7 @@ Usage:
   $SELF_NAME switch
   $SELF_NAME notify [test [message]|status]
   $SELF_NAME backup
+  $SELF_NAME restore-preview [archive]
   $SELF_NAME install-backup-cron [schedule]
   $SELF_NAME pull
   $SELF_NAME update [--force-down]
@@ -817,6 +818,81 @@ status_json() {
   fi
 }
 
+status_snapshot() {
+  local running health invite_code world_id server_name
+  local backup_dir latest_backup backup_age
+  local container_name
+
+  container_name="$(dotenv_value CONTAINER_NAME 2>/dev/null || true)"
+  container_name="${container_name:-$SERVICE_NAME}"
+
+  if server_is_running; then
+    running="yes"
+  else
+    running="no"
+  fi
+
+  health="$("${DOCKER_CMD[@]}" inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container_name" 2>/dev/null || true)"
+  health="${health//$'\n'/}"
+  health="${health:-unknown}"
+
+  invite_code=""
+  world_id=""
+  server_name=""
+  if [[ -f "$SERVER_DESC_FILE" ]] && command -v jq >/dev/null 2>&1; then
+    invite_code="$(jq -r '.ServerDescription_Persistent.InviteCode // ""' "$SERVER_DESC_FILE" 2>/dev/null || true)"
+    world_id="$(jq -r '.ServerDescription_Persistent.WorldIslandId // ""' "$SERVER_DESC_FILE" 2>/dev/null || true)"
+    server_name="$(jq -r '.ServerDescription_Persistent.ServerName // ""' "$SERVER_DESC_FILE" 2>/dev/null || true)"
+  fi
+
+  backup_dir="$(dotenv_value BACKUP_DIR 2>/dev/null || true)"
+  backup_dir="${backup_dir:-$SCRIPT_DIR/backups}"
+  if [[ "$backup_dir" != /* ]]; then
+    backup_dir="$SCRIPT_DIR/$backup_dir"
+  fi
+
+  backup_age="unknown"
+  if [[ -d "$backup_dir" ]]; then
+    latest_backup="$(find "$backup_dir" -maxdepth 1 -type f \( -name 'windrose-backup-*.tar.gz' -o -name 'windrose-backup-*.zip' \) -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -1 | awk '{print $2}')"
+    if [[ -z "$latest_backup" ]]; then
+      backup_age="none"
+    else
+      local backup_mtime now_ts age_secs
+      backup_mtime="$(stat -c %Y "$latest_backup" 2>/dev/null || true)"
+      now_ts="$(date +%s)"
+      if [[ -n "$backup_mtime" && "$backup_mtime" =~ ^[0-9]+$ ]]; then
+        age_secs=$((now_ts - backup_mtime))
+        if ((age_secs < 3600)); then
+          backup_age="$((age_secs / 60))m ago"
+        elif ((age_secs < 86400)); then
+          backup_age="$((age_secs / 3600))h ago"
+        else
+          backup_age="$((age_secs / 86400))d ago"
+        fi
+      else
+        backup_age="unknown"
+      fi
+    fi
+  fi
+
+  local invite_display
+  if [[ -n "$invite_code" ]]; then
+    invite_display="set"
+  else
+    invite_display="not set"
+  fi
+
+  printf '%s\n' "--- Windrose Status Snapshot ---"
+  printf '  %-18s %s\n' "mode:" "${ACTIVE_MODE:-unknown}"
+  printf '  %-18s %s\n' "running:" "$running"
+  printf '  %-18s %s\n' "health:" "$health"
+  printf '  %-18s %s\n' "server:" "${server_name:-unknown}"
+  printf '  %-18s %s\n' "world:" "${world_id:-unknown}"
+  printf '  %-18s %s\n' "invite code:" "$invite_display"
+  printf '  %-18s %s\n' "backup age:" "$backup_age"
+  printf '%s\n' "--------------------------------"
+}
+
 doctor_server() {
   local min_ram_mb=8192
   local min_disk_mb=8192
@@ -927,7 +1003,9 @@ doctor_server() {
     if server_is_running; then
       log_ok "PORT ${game_port} is bound"
     else
-      log_warn "PORT ${game_port} is already in use while service is stopped"
+      local port_owner_game
+      port_owner_game="$(get_port_owner "$game_port")"
+      log_warn "PORT ${game_port} is already in use while service is stopped (held by: $port_owner_game)"
       warn_count=$((warn_count + 1))
     fi
   else
@@ -942,7 +1020,9 @@ doctor_server() {
     if server_is_running; then
       log_ok "QUERYPORT ${query_port} is bound"
     else
-      log_warn "QUERYPORT ${query_port} is already in use while service is stopped"
+      local port_owner_query
+      port_owner_query="$(get_port_owner "$query_port")"
+      log_warn "QUERYPORT ${query_port} is already in use while service is stopped (held by: $port_owner_query)"
       warn_count=$((warn_count + 1))
     fi
   else
@@ -1476,14 +1556,40 @@ EOF
   esac
 }
 
+_check_notifier_endpoint() {
+  local provider="$1"
+  local url="$2"
+
+  if [[ -z "$url" ]]; then
+    log_warn "Endpoint reachability: skipped (no URL configured)"
+    return
+  fi
+
+  if ! command -v curl >/dev/null 2>&1; then
+    log_warn "Endpoint reachability: skipped (curl not available)"
+    return
+  fi
+
+  local http_code
+  http_code="$(curl --silent --max-time 5 --output /dev/null \
+    --write-out '%{http_code}' \
+    "$url" 2>/dev/null || true)"
+
+  if [[ "$http_code" =~ ^[2345][0-9]{2}$ ]]; then
+    log_ok "Endpoint reachability ($provider): reachable (HTTP $http_code)"
+  else
+    log_warn "Endpoint reachability ($provider): unreachable or no response (HTTP ${http_code:-none})"
+  fi
+}
+
 notify_status() {
   local notify_pid_file="$SCRIPT_DIR/state/notify.pid"
   local notify_log_file="$SCRIPT_DIR/logs/notify.log"
   local notify_pid=""
   local provider="${NOTIFY_PROVIDER:-$(dotenv_value NOTIFY_PROVIDER || true)}"
-  local gotify_url="${GOTIFY_URL:-$(dotenv_value GOTIFY_URL || true)}"
-  local gotify_token="${GOTIFY_TOKEN:-$(dotenv_value GOTIFY_TOKEN || true)}"
-  local discord_webhook_url="${DISCORD_WEBHOOK_URL:-$(dotenv_value DISCORD_WEBHOOK_URL || true)}"
+  local gotify_url_resolve="${GOTIFY_URL:-$(dotenv_value GOTIFY_URL || true)}"
+  local gotify_token_resolve="${GOTIFY_TOKEN:-$(dotenv_value GOTIFY_TOKEN || true)}"
+  local discord_webhook_url_resolve="${DISCORD_WEBHOOK_URL:-$(dotenv_value DISCORD_WEBHOOK_URL || true)}"
   local resolved_provider=""
 
   provider="${provider:-auto}"
@@ -1505,9 +1611,9 @@ notify_status() {
   fi
 
   if [[ "$provider" == "auto" ]]; then
-    if [[ -n "$gotify_url" && -n "$gotify_token" ]]; then
+    if [[ -n "$gotify_url_resolve" && -n "$gotify_token_resolve" ]]; then
       resolved_provider="gotify"
-    elif [[ -n "$discord_webhook_url" ]]; then
+    elif [[ -n "$discord_webhook_url_resolve" ]]; then
       resolved_provider="discord"
     else
       resolved_provider="none"
@@ -1520,9 +1626,38 @@ notify_status() {
     log_ok "Activity notifier is running (PID $notify_pid)."
   else
     log_warn "Activity notifier is not running."
+    log_info "Run: ./$SELF_NAME notify"
   fi
 
   log_info "Notify provider: $provider (resolved: $resolved_provider)"
+  local discord_webhook_url gotify_url gotify_token
+  discord_webhook_url="${DISCORD_WEBHOOK_URL:-$(dotenv_value DISCORD_WEBHOOK_URL 2>/dev/null || true)}"
+  gotify_url="${GOTIFY_URL:-$(dotenv_value GOTIFY_URL 2>/dev/null || true)}"
+  gotify_token="${GOTIFY_TOKEN:-$(dotenv_value GOTIFY_TOKEN 2>/dev/null || true)}"
+
+  local discord_cfg="not set"
+  local gotify_cfg="not set"
+  if [[ -n "$discord_webhook_url" ]]; then discord_cfg="set"; fi
+  if [[ -n "$gotify_url" && -n "$gotify_token" ]]; then
+    gotify_cfg="set (url + token)"
+  elif [[ -n "$gotify_url" ]]; then
+    gotify_cfg="set (url only, token missing)"
+  fi
+
+  log_info "Discord webhook config: $discord_cfg"
+  log_info "Gotify config:          $gotify_cfg"
+
+  if [[ "$resolved_provider" == "discord" ]]; then
+    _check_notifier_endpoint "discord" "$discord_webhook_url"
+  elif [[ "$resolved_provider" == "gotify" ]]; then
+    _check_notifier_endpoint "gotify" "$gotify_url"
+  else
+    log_info "Endpoint reachability: skipped (provider=none)"
+  fi
+
+  if [[ "$resolved_provider" == "none" ]]; then
+    log_warn "No notification provider is configured. Set DISCORD_WEBHOOK_URL or GOTIFY_URL + GOTIFY_TOKEN in .env"
+  fi
   log_info "Notify log file: $notify_log_file"
 
   if [[ -f "$notify_log_file" ]]; then
@@ -1853,6 +1988,141 @@ upload_backup_to_discord() {
   fi
 }
 
+restore_preview() {
+  local archive_path="${1:-}"
+
+  # Resolve backup dir
+  local backup_dir
+  backup_dir="${BACKUP_DIR:-$(dotenv_value BACKUP_DIR 2>/dev/null || true)}"
+  backup_dir="${backup_dir:-$SCRIPT_DIR/backups}"
+  if [[ "$backup_dir" != /* ]]; then
+    backup_dir="$SCRIPT_DIR/$backup_dir"
+  fi
+
+  # If no archive specified, find the newest one
+  if [[ -z "$archive_path" ]]; then
+    if [[ ! -d "$backup_dir" ]]; then
+      log_error "Backup directory not found: $backup_dir"
+      return 1
+    fi
+
+    local all_archives=()
+    while IFS= read -r -d '' f; do
+      all_archives+=("$f")
+    done < <(find "$backup_dir" -maxdepth 1 -type f \( -name 'windrose-backup-*.tar.gz' -o -name 'windrose-backup-*.zip' \) -printf '%T@ %p\0' 2>/dev/null | sort -zn | awk -F'\0' 'BEGIN{RS="\0\0"} {sub(/^[0-9.]+ /,""); printf "%s\0", $0}')
+
+    if [[ "${#all_archives[@]}" -eq 0 ]]; then
+      # Try simpler approach: just find newest by name sort
+      local newest
+      newest="$(find "$backup_dir" -maxdepth 1 -type f \( -name 'windrose-backup-*.tar.gz' -o -name 'windrose-backup-*.zip' \) 2>/dev/null | sort | tail -1)"
+      if [[ -z "$newest" ]]; then
+        log_error "No backup archives found in $backup_dir"
+        return 1
+      fi
+      archive_path="$newest"
+      log_info "Auto-selected: $(basename "$archive_path")"
+    elif [[ ! -t 0 ]] || [[ "${#all_archives[@]}" -eq 1 ]]; then
+      # Non-interactive or only one archive: pick newest
+      archive_path="${all_archives[-1]}"
+      log_info "Auto-selected: $(basename "$archive_path")"
+    else
+      # Interactive: show list
+      log_info "Available backups:"
+      local i
+      for (( i=0; i<${#all_archives[@]}; i++ )); do
+        printf '  [%d] %s\n' "$(( i + 1 ))" "$(basename "${all_archives[$i]}")"
+      done
+      local selection
+      read -r -p "Select archive [1-${#all_archives[@]}]: " selection
+      if ! [[ "$selection" =~ ^[0-9]+$ ]] || (( selection < 1 || selection > ${#all_archives[@]} )); then
+        log_error "Invalid selection: $selection"
+        return 1
+      fi
+      archive_path="${all_archives[$(( selection - 1 ))]}"
+    fi
+  fi
+
+  # Make relative paths absolute
+  if [[ "$archive_path" != /* ]]; then
+    archive_path="$SCRIPT_DIR/$archive_path"
+  fi
+
+  # Validate file exists
+  if [[ ! -f "$archive_path" ]]; then
+    log_error "Archive not found: $archive_path"
+    return 1
+  fi
+
+  # Detect format
+  local archive_type
+  case "$archive_path" in
+  *.tar.gz) archive_type="tar.gz" ;;
+  *.zip) archive_type="zip" ;;
+  *)
+    log_error "Unsupported archive format: $(basename "$archive_path") (expected .tar.gz or .zip)"
+    return 1
+    ;;
+  esac
+
+  # Integrity check (read-only)
+  local integrity="ok"
+  if [[ "$archive_type" == "tar.gz" ]]; then
+    if ! tar -tzf "$archive_path" >/dev/null 2>&1; then
+      log_error "Archive is corrupt or unreadable: $(basename "$archive_path")"
+      return 1
+    fi
+  else
+    if ! command -v unzip >/dev/null 2>&1; then
+      log_error "unzip command not found. Install unzip to preview zip archives."
+      return 1
+    fi
+    if ! unzip -t "$archive_path" >/dev/null 2>&1; then
+      log_error "Archive is corrupt or unreadable: $(basename "$archive_path")"
+      return 1
+    fi
+  fi
+
+  # Archive timestamp
+  local archive_ts_str="unknown"
+  local archive_mtime
+  archive_mtime="$(stat -c %Y "$archive_path" 2>/dev/null || true)"
+  if [[ -n "$archive_mtime" && "$archive_mtime" =~ ^[0-9]+$ ]]; then
+    archive_ts_str="$(date -d "@$archive_mtime" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date -r "$archive_mtime" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo 'unknown')"
+  fi
+
+  # Top-level entries
+  local top_entries=""
+  if [[ "$archive_type" == "tar.gz" ]]; then
+    top_entries="$(tar -tzf "$archive_path" 2>/dev/null | cut -d/ -f1 | sort -u | head -20 | sed 's/^/    /')"
+  else
+    top_entries="$(unzip -l "$archive_path" 2>/dev/null | awk 'NR>3 && NF>=4 {print $NF}' | cut -d/ -f1 | sort -u | head -20 | sed 's/^/    /')"
+  fi
+  [[ -z "$top_entries" ]] && top_entries="    (none detected)"
+
+  # Overwrite scope
+  local base overwrite_scope
+  base="$(basename "$archive_path")"
+  if [[ "$base" == *"-full-"* ]]; then
+    overwrite_scope="data/R5 (full game data)"
+  elif [[ "$base" == *"-save-"* ]]; then
+    overwrite_scope="data/R5/Saved + ServerDescription.json"
+  else
+    overwrite_scope="unknown (inspect top-level entries)"
+  fi
+
+  # Print preview (no writes)
+  printf '%s\n' "--- Restore Preview ---"
+  printf '  %-18s %s\n' "archive:" "$base"
+  printf '  %-18s %s\n' "type:" "$archive_type"
+  printf '  %-18s %s\n' "created:" "$archive_ts_str"
+  printf '  %-18s %s\n' "overwrite scope:" "$overwrite_scope"
+  printf '  %-18s %s\n' "integrity:" "$integrity"
+  printf '  %s\n' "top-level entries:"
+  printf '%s\n' "$top_entries"
+  printf '  %s\n' "NOTE: This is a preview only. No files were modified."
+  printf '%s\n' "-----------------------"
+}
+
 install_backup_cron() {
   local schedule="${1:-0 6 * * *}"
   local backup_cmd="$SCRIPT_DIR/windrose backup"
@@ -2042,16 +2312,60 @@ diagnostics_bundle() {
   log_ok "Diagnostics bundle created: $out_file"
 }
 
+_print_update_summary() {
+  local result="$1"
+  local old_ref="$2"
+  local new_ref="$3"
+  local duration_secs="$4"
+  local running="$5"
+  local health="$6"
+  local mins=$((duration_secs / 60))
+  local secs=$((duration_secs % 60))
+  printf '\n'
+  log_info "--- Update Summary ---"
+  log_info "  result:    $result"
+  log_info "  old image: ${old_ref:-unknown}"
+  log_info "  new image: ${new_ref:-unknown}"
+  log_info "  duration:  ${mins}m ${secs}s"
+  log_info "  running:   $running"
+  log_info "  health:    $health"
+  log_info "----------------------"
+}
+
+_update_fail() {
+  local old_ref="$1"
+  local new_ref="$2"
+  local start_ts="$3"
+  local now_ts duration container_name running health
+  now_ts="$(date +%s)"
+  duration=$((now_ts - start_ts))
+  container_name="$(dotenv_value CONTAINER_NAME 2>/dev/null || true)"
+  container_name="${container_name:-$SERVICE_NAME}"
+  running="no"
+  server_is_running && running="yes" || true
+  health="$("${DOCKER_CMD[@]}" inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container_name" 2>/dev/null || true)"
+  health="${health//$'\n'/}"
+  health="${health:-unknown}"
+  _print_update_summary "failed" "$old_ref" "$new_ref" "$duration" "$running" "$health"
+  exit 1
+}
+
 update_server() {
   local mode="${1:-}"
   local notify_pid_file="$SCRIPT_DIR/state/notify.pid"
   local notify_log_file="$SCRIPT_DIR/logs/notify.log"
   local notifier_was_running=false
   local notifier_pid=""
+  local update_start_ts old_image_ref new_image_ref
+  update_start_ts="$(date +%s)"
+  local _upd_container_name
+  _upd_container_name="$(dotenv_value CONTAINER_NAME 2>/dev/null || true)"
+  _upd_container_name="${_upd_container_name:-$SERVICE_NAME}"
+  old_image_ref="$("${DOCKER_CMD[@]}" inspect "$_upd_container_name" --format '{{.Config.Image}}' 2>/dev/null || true)"
 
   if [[ -n "$mode" && "$mode" != "--force-down" ]]; then
     log_error "Invalid update option '$mode'. Supported: --force-down"
-    exit 1
+    _update_fail "$old_image_ref" "$new_image_ref" "$update_start_ts"
   fi
 
   if [[ -f "$notify_pid_file" ]]; then
@@ -2084,7 +2398,7 @@ update_server() {
     if ! dc down >>"$UPDATE_LOG_FILE" 2>&1; then
       printf '\n'
       log_error "Failed to stop and remove the stack before update. See $UPDATE_LOG_FILE"
-      exit 1
+      _update_fail "$old_image_ref" "$new_image_ref" "$update_start_ts"
     fi
     render_progress_bar 33
 
@@ -2092,7 +2406,7 @@ update_server() {
     if ! dc pull >>"$UPDATE_LOG_FILE" 2>&1; then
       printf '\n'
       log_error "Failed to pull the selected image tag. See $UPDATE_LOG_FILE"
-      exit 1
+      _update_fail "$old_image_ref" "$new_image_ref" "$update_start_ts"
     fi
     render_progress_bar 66
 
@@ -2100,14 +2414,15 @@ update_server() {
     if ! dc up -d >>"$UPDATE_LOG_FILE" 2>&1; then
       printf '\n'
       log_error "Failed to recreate the container after update. See $UPDATE_LOG_FILE"
-      exit 1
+      _update_fail "$old_image_ref" "$new_image_ref" "$update_start_ts"
     fi
+    new_image_ref="$("${DOCKER_CMD[@]}" inspect "$_upd_container_name" --format '{{.Config.Image}}' 2>/dev/null || true)"
   else
     append_update_log "Running (safe): docker compose pull"
     if ! dc pull >>"$UPDATE_LOG_FILE" 2>&1; then
       printf '\n'
       log_error "Failed to pull the selected image tag. Existing container was left untouched. See $UPDATE_LOG_FILE"
-      exit 1
+      _update_fail "$old_image_ref" "$new_image_ref" "$update_start_ts"
     fi
     render_progress_bar 50
 
@@ -2115,17 +2430,27 @@ update_server() {
     if ! dc up -d >>"$UPDATE_LOG_FILE" 2>&1; then
       printf '\n'
       log_error "Failed to recreate the container after update. See $UPDATE_LOG_FILE"
-      exit 1
+      _update_fail "$old_image_ref" "$new_image_ref" "$update_start_ts"
     fi
+    new_image_ref="$("${DOCKER_CMD[@]}" inspect "$_upd_container_name" --format '{{.Config.Image}}' 2>/dev/null || true)"
   fi
 
   if ! verify_update_runtime; then
     append_update_log "Update finished with verification failure"
-    exit 1
+    _update_fail "$old_image_ref" "$new_image_ref" "$update_start_ts"
   fi
 
   render_progress_bar 100
   log_ok "Server updated and verified."
+  local update_end_ts duration post_running post_health
+  update_end_ts="$(date +%s)"
+  duration=$((update_end_ts - update_start_ts))
+  post_running="no"
+  server_is_running && post_running="yes" || true
+  post_health="$("${DOCKER_CMD[@]}" inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$_upd_container_name" 2>/dev/null || true)"
+  post_health="${post_health//$'\n'/}"
+  post_health="${post_health:-unknown}"
+  _print_update_summary "ok" "$old_image_ref" "$new_image_ref" "$duration" "$post_running" "$post_health"
   log_info "Detailed update log: $UPDATE_LOG_FILE"
   append_update_log "Update finished successfully"
 
@@ -2172,6 +2497,19 @@ port_is_in_use() {
   fi
 
   ss -H -lntu 2>/dev/null | awk '{print $5}' | grep -E "(^|[:\]])${port}$" >/dev/null 2>&1
+}
+
+get_port_owner() {
+  local port="$1"
+  local output
+  output="$(ss -H -lntu -p 2>/dev/null | awk -v p="$port" '
+    $5 ~ "(^|[:\\]])"p"$" {
+      match($0, /users:\(\("([^"]+)"/, m)
+      if (m[1] != "") print m[1]
+      else print "unknown-process"
+    }
+  ' 2>/dev/null | head -1)"
+  printf '%s' "${output:-unknown-process}"
 }
 
 run_setup_host_precheck() {
@@ -2529,6 +2867,9 @@ status | ps)
 status-json)
   status_json
   ;;
+status-snapshot)
+  status_snapshot
+  ;;
 doctor)
   doctor_server
   ;;
@@ -2567,6 +2908,9 @@ test-notify)
   ;;
 backup)
   backup_server
+  ;;
+restore-preview)
+  restore_preview "${2:-}"
   ;;
 install-backup-cron)
   install_backup_cron "${2:-}"
