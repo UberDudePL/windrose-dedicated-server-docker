@@ -3,7 +3,7 @@
 ![GitHub Stars](https://img.shields.io/github/stars/UberDudePL/windrose-dedicated-server-docker)
 ![License](https://img.shields.io/github/license/UberDudePL/windrose-dedicated-server-docker)
 ![Version](https://img.shields.io/github/v/release/UberDudePL/windrose-dedicated-server-docker)
-![Docker Pulls](https://img.shields.io/docker/pulls/uberdudepl/windrose-server)
+![Docker Pulls](https://img.shields.io/docker/pulls/uberdudepl/windrose-dedicated-server-docker)
 
 Windrose dedicated server for Linux using Docker, SteamCMD and Wine, with persistent saves, backups, diagnostics and optional Discord/Gotify notifications.
 
