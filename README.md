@@ -298,6 +298,88 @@ Important:
 - If you create a new world, the server initializes its data on the next start.
 - World discovery is version-specific, so the command uses the latest directory found under `RocksDB/`.
 
+### Gameplay difficulty
+
+Gameplay difficulty is stored per world in `WorldDescription.json` and is not controlled by `docker-compose.yml` environment variables.
+
+1. Stop the server:
+
+   ```bash
+   ./windrose stop
+   ```
+
+2. Find the active world ID from `data/R5/ServerDescription.json`:
+
+   ```json
+   ServerDescription_Persistent.WorldIslandId
+   ```
+
+3. Edit this file for that active world:
+
+   ```text
+   data/R5/Saved/SaveProfiles/Default/RocksDB/<GameVersion>/Worlds/<WorldIslandId>/WorldDescription.json
+   ```
+
+4. For an Easy preset, ensure these fields match:
+
+   - `WorldDescription.WorldPresetType = "Easy"`
+   - `WorldDescription.WorldSettings.TagParameters["{\"TagName\": \"WDS.Parameter.CombatDifficulty\"}"].TagName = "WDS.Parameter.CombatDifficulty.Easy"`
+   - `WorldDescription.WorldSettings.BoolParameters["{\"TagName\": \"WDS.Parameter.EasyExplore\"}"] = true`
+
+5. Start the server:
+
+   ```bash
+   ./windrose start
+   ```
+
+Tip: if values do not apply, verify the edited world ID is the same as `ServerDescription_Persistent.WorldIslandId`.
+
+### Make one world persist across restarts
+
+To keep the same game world instead of generating new ones:
+
+1. Keep persistent host binds for `/data` and `/home/steam` (do not change them between deployments).
+2. Always keep `ServerDescription_Persistent.WorldIslandId` set to an existing world folder name.
+3. Do not rename world folders.
+4. Stop the server before editing `ServerDescription.json` or `WorldDescription.json`.
+5. Restart after edits and verify logs.
+
+If a new world keeps appearing:
+
+- Check that `WorldIslandId` points to a folder that exists under `.../RocksDB/<GameVersion>/Worlds/`.
+- Run `./windrose worlds-check` to detect broken or placeholder entries.
+- Re-select the intended world with `./windrose switch`.
+
+### World consistency guardrails
+
+To avoid accidental new-world generation and confusing config drift, keep these values aligned:
+
+1. `ServerDescription_Persistent.WorldIslandId`
+2. The selected world folder name under `.../Worlds/<WorldIslandId>`
+3. `WorldDescription.IslandId` inside that world's `WorldDescription.json`
+
+If any of these mismatch, the server may generate a new world and rewrite IDs on startup.
+
+### Preset vs custom behavior
+
+- `WorldPresetType` should be one of `Easy`, `Medium`, or `Hard` for preset mode.
+- If you change individual `WorldSettings` values, the world can switch to `Custom` on next launch.
+- For predictable outcomes, either:
+   - Use preset values only, or
+   - Intentionally manage a full custom profile and treat `WorldPresetType` as `Custom`.
+
+### Safe config edit workflow
+
+Use this sequence every time you change server/world JSON files:
+
+1. Stop server.
+2. Back up config/save files.
+3. Edit files.
+4. Start server.
+5. Verify loaded values in logs and in active JSON.
+
+This avoids partial writes, tool/UI overwrites, and startup-time regeneration surprises.
+
 ---
 
 ## How players join
@@ -309,6 +391,27 @@ Important:
 5. No port forwarding is required for the normal invite-code flow
 
 The server still binds internal game and query ports, mainly for local binding and advanced or multi-instance setups.
+
+---
+
+## In-game visibility (official)
+
+Based on official Windrose documentation and Steam announcements:
+
+- Players can join via invite code in-game: **Play -> Connect to Server**.
+- There is a **Show Server Info** section in the in-game **Esc** menu.
+- `ServerName` is intended to help identify the correct server when invite codes are similar.
+
+What is not clearly documented as visible in dedicated-server UI:
+
+- Detailed world difficulty internals (for example `WorldPresetType`, combat tags, and multipliers).
+
+Treat those as file-based settings in `WorldDescription.json` and verify with logs/file values when needed.
+
+Official references:
+
+- https://playwindrose.com/dedicated-server-guide/
+- https://steamcommunity.com/app/3041230/announcements/
 
 ---
 
