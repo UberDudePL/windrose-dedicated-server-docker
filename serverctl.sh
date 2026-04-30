@@ -269,7 +269,7 @@ Usage:
   $SELF_NAME doctor
   $SELF_NAME diagnostics [log-lines]
   $SELF_NAME logs
-  $SELF_NAME activity [events|history] [lines]
+  $SELF_NAME activity [events|history|status] [lines]
   $SELF_NAME worlds
   $SELF_NAME worlds-check
   $SELF_NAME worlds-prune [--apply]
@@ -925,8 +925,166 @@ restart_server() {
 }
 
 status_server() {
-  log_info "Service status ($ACTIVE_MODE mode):"
-  dc ps
+  local container_name running compose_state compose_status compose_name health
+  local activity_lines=4000
+  local online_tmp_file
+  local online_now="unknown"
+  local last_event="unknown"
+  local players_short="unknown"
+  local backup_dir latest_backup backup_age backup_mtime now_ts age_secs
+  local backup_is_old="false"
+  local notify_pid_file="$SCRIPT_DIR/state/notify.pid"
+  local notify_pid=""
+  local notifier_state="not running"
+  local provider configured_provider resolved_provider
+  local -a next_steps=()
+
+  container_name="$(dotenv_value CONTAINER_NAME 2>/dev/null || true)"
+  container_name="${container_name:-$SERVICE_NAME}"
+
+  if server_is_running; then
+    running="yes"
+  else
+    running="no"
+  fi
+
+  compose_state="unknown"
+  compose_status="unknown"
+  compose_name="$container_name"
+  local compose_line
+  compose_line="$(dc ps --all --format '{{.Service}}|{{.State}}|{{.Status}}|{{.Name}}' 2>/dev/null | awk -F'|' -v svc="$SERVICE_NAME" '$1 == svc {print; exit}' || true)"
+  if [[ -n "$compose_line" ]]; then
+    compose_state="$(printf '%s' "$compose_line" | awk -F'|' '{print $2}')"
+    compose_status="$(printf '%s' "$compose_line" | awk -F'|' '{print $3}')"
+    compose_name="$(printf '%s' "$compose_line" | awk -F'|' '{print $4}')"
+  fi
+
+  health="$("${DOCKER_CMD[@]}" inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container_name" 2>/dev/null || true)"
+  health="${health//$'\n'/}"
+  health="${health:-unknown}"
+
+  online_tmp_file="$(mktemp)"
+  if activity_collect_metrics "$activity_lines" "$online_tmp_file"; then
+    online_now="$ACTIVITY_METRICS_ONLINE_COUNT"
+    last_event="$ACTIVITY_METRICS_LAST_EVENT_TS"
+    players_short="$(awk -F'\t' 'NR<=3 { entry = ($2 != "" ? $2 " [" $1 "]" : $1); if (out == "") out = entry; else out = out ", " entry } END { print out }' "$online_tmp_file")"
+    if [[ -z "$players_short" ]]; then
+      players_short="(none)"
+    fi
+    if [[ "$online_now" =~ ^[0-9]+$ ]] && ((online_now > 3)); then
+      players_short+=" ..."
+    fi
+  else
+    log_warn "Activity metrics unavailable; showing partial status."
+  fi
+  rm -f "$online_tmp_file"
+
+  backup_dir="$(dotenv_value BACKUP_DIR 2>/dev/null || true)"
+  backup_dir="${backup_dir:-$SCRIPT_DIR/backups}"
+  if [[ "$backup_dir" != /* ]]; then
+    backup_dir="$SCRIPT_DIR/$backup_dir"
+  fi
+
+  backup_age="unknown"
+  if [[ -d "$backup_dir" ]]; then
+    latest_backup="$(find "$backup_dir" -maxdepth 1 -type f \( -name 'windrose-backup-*.tar.gz' -o -name 'windrose-backup-*.zip' \) -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -1 | awk '{print $2}')"
+    if [[ -z "$latest_backup" ]]; then
+      backup_age="none"
+      backup_is_old="true"
+    else
+      backup_mtime="$(stat -c %Y "$latest_backup" 2>/dev/null || true)"
+      now_ts="$(date +%s)"
+      if [[ -n "$backup_mtime" && "$backup_mtime" =~ ^[0-9]+$ ]]; then
+        age_secs=$((now_ts - backup_mtime))
+        if ((age_secs < 3600)); then
+          backup_age="$((age_secs / 60))m ago"
+        elif ((age_secs < 86400)); then
+          backup_age="$((age_secs / 3600))h ago"
+        else
+          backup_age="$((age_secs / 86400))d ago"
+        fi
+        if ((age_secs > 172800)); then
+          backup_is_old="true"
+        fi
+      fi
+    fi
+  fi
+
+  if [[ -f "$notify_pid_file" ]]; then
+    notify_pid="$(head -n 1 "$notify_pid_file" 2>/dev/null || true)"
+    if [[ -n "$notify_pid" ]] && ! kill -0 "$notify_pid" >/dev/null 2>&1; then
+      rm -f "$notify_pid_file"
+      notify_pid=""
+    fi
+  fi
+  if [[ -z "$notify_pid" ]]; then
+    notify_pid="$(pgrep -f "$SCRIPT_DIR/notify.sh" | head -n 1 || true)"
+  fi
+  if [[ -n "$notify_pid" ]]; then
+    notifier_state="running (pid $notify_pid)"
+  fi
+
+  configured_provider="${NOTIFY_PROVIDER:-$(dotenv_value NOTIFY_PROVIDER || true)}"
+  configured_provider="${configured_provider:-auto}"
+  provider="$configured_provider"
+  if [[ "$configured_provider" == "auto" ]]; then
+    local gotify_url_resolve gotify_token_resolve discord_webhook_url_resolve
+    gotify_url_resolve="${GOTIFY_URL:-$(dotenv_value GOTIFY_URL || true)}"
+    gotify_token_resolve="${GOTIFY_TOKEN:-$(dotenv_value GOTIFY_TOKEN || true)}"
+    discord_webhook_url_resolve="${DISCORD_WEBHOOK_URL:-$(dotenv_value DISCORD_WEBHOOK_URL || true)}"
+    if [[ -n "$gotify_url_resolve" && -n "$gotify_token_resolve" ]]; then
+      resolved_provider="gotify"
+    elif [[ -n "$discord_webhook_url_resolve" ]]; then
+      resolved_provider="discord"
+    else
+      resolved_provider="none"
+    fi
+  else
+    resolved_provider="$configured_provider"
+  fi
+
+  screen_title "Windrose Operator Status"
+
+  screen_section "Runtime/Container"
+  screen_kv "mode:" "$ACTIVE_MODE"
+  screen_kv "service:" "$SERVICE_NAME"
+  screen_kv "container:" "$compose_name"
+  screen_kv "running:" "$running"
+  screen_kv "state:" "$compose_state"
+  screen_kv "status:" "$compose_status"
+  screen_kv "health:" "$health"
+
+  screen_section "Game/Activity"
+  screen_kv "online now:" "$online_now"
+  screen_kv "players:" "$players_short"
+  screen_kv "last event:" "$last_event"
+
+  screen_section "Operations"
+  screen_kv "backup age:" "$backup_age"
+  screen_kv "notifier:" "$notifier_state"
+  screen_kv "provider:" "$provider -> $resolved_provider"
+
+  if [[ "$running" != "yes" || "$compose_state" == "exited" || "$compose_state" == "dead" ]]; then
+    next_steps+=("./$SELF_NAME start")
+  elif [[ "$health" == "unhealthy" ]]; then
+    next_steps+=("./$SELF_NAME logs")
+  fi
+
+  if [[ "$notifier_state" == "not running" && "$resolved_provider" != "none" ]]; then
+    next_steps+=("./$SELF_NAME notify")
+  fi
+
+  if [[ "$backup_is_old" == "true" ]]; then
+    next_steps+=("./$SELF_NAME backup")
+  fi
+
+  if ((${#next_steps[@]} > 0)); then
+    screen_section "Next Steps"
+    printf '  1) %s\n' "${next_steps[0]}"
+    if ((${#next_steps[@]} > 1)); then
+      printf '  2) %s\n' "${next_steps[1]}"
+    fi
+  fi
 }
 
 status_json() {
@@ -1282,6 +1440,282 @@ player_history() {
   fi
 }
 
+ACTIVITY_METRICS_MATCHED_COUNT=0
+ACTIVITY_METRICS_ONLINE_COUNT=0
+ACTIVITY_METRICS_LAST_EVENT_TS="unknown"
+
+activity_collect_metrics() {
+  local lines="$1"
+  local online_out_file="$2"
+  local identities_file="$SCRIPT_DIR/state/player-identities.tsv"
+  local log_tmp_file
+  local parsed_tmp_file
+  local matched_count=0
+  local online_count=0
+  local last_event_ts="unknown"
+  local player_key
+  local player_name=""
+  local event_ts event_type event_player
+  declare -A online_players=()
+  declare -A known_names=()
+  declare -a online_keys=()
+
+  : >"$online_out_file"
+
+  if [[ -f "$identities_file" ]]; then
+    while IFS=$'\t' read -r player_key player_name; do
+      [[ -z "$player_key" || -z "$player_name" ]] && continue
+      known_names["$player_key"]="$player_name"
+    done <"$identities_file"
+  fi
+
+  log_tmp_file="$(mktemp)"
+  parsed_tmp_file="$(mktemp)"
+
+  if ! dc logs --no-color --timestamps --tail "$lines" "$SERVICE_NAME" 2>&1 | sed 's/\.[0-9]*Z/Z/' >"$log_tmp_file"; then
+    rm -f "$log_tmp_file" "$parsed_tmp_file"
+    return 1
+  fi
+
+  awk '
+        {
+            line = $0
+            low = tolower(line)
+            ts = ""
+            player = ""
+            type = ""
+
+            if (match(line, /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[^ ]+/)) {
+                ts = substr(line, RSTART, RLENGTH)
+            } else {
+                ts = strftime("%Y-%m-%dT%H:%M:%SZ")
+            }
+
+            if (low ~ /lognet: join succeeded:/) {
+                sub(/.*[Jj]oin succeeded:[[:space:]]*/, "", line)
+                player = line
+                type = "join"
+            } else if (low ~ /lognet: leave:/) {
+                sub(/.*[Ll]eave:[[:space:]]*/, "", line)
+                player = line
+                type = "leave"
+            } else if (match(line, /Name '\''([^'\'']+)'\''.*State '\''SaidFarewell'\''/, m)) {
+                player = m[1]
+                type = "leave"
+            } else if (match(low, /disconnectaccount.*accountid[[:space:]]+([a-z0-9]+)/, m)) {
+                player = toupper(m[1])
+                type = "leave"
+            }
+
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", player)
+            if (player != "" && player != "INVALID" && player != "NULL") {
+                print ts "\t" type "\t" player
+            }
+        }
+      ' "$log_tmp_file" >"$parsed_tmp_file"
+
+  while IFS=$'\t' read -r event_ts event_type event_player; do
+    [[ -z "$event_ts" || -z "$event_type" || -z "$event_player" ]] && continue
+    matched_count=$((matched_count + 1))
+    last_event_ts="$event_ts"
+
+    case "$event_type" in
+    join)
+      online_players["$event_player"]="1"
+      ;;
+    leave)
+      unset 'online_players[$event_player]'
+      ;;
+    esac
+  done <"$parsed_tmp_file"
+
+  rm -f "$log_tmp_file" "$parsed_tmp_file"
+
+  for player_key in "${!online_players[@]}"; do
+    online_keys+=("$player_key")
+  done
+
+  if ((${#online_keys[@]} > 0)); then
+    mapfile -t online_keys < <(printf '%s\n' "${online_keys[@]}" | sort)
+  fi
+
+  online_count="${#online_keys[@]}"
+
+  for player_key in "${online_keys[@]}"; do
+    player_name="${known_names[$player_key]:-}"
+    printf '%s\t%s\n' "$player_key" "$player_name" >>"$online_out_file"
+  done
+
+  ACTIVITY_METRICS_MATCHED_COUNT="$matched_count"
+  ACTIVITY_METRICS_ONLINE_COUNT="$online_count"
+  ACTIVITY_METRICS_LAST_EVENT_TS="$last_event_ts"
+  return 0
+}
+
+activity_status() {
+  local lines="${1:-4000}"
+  local online_tmp_file
+  local matched_count=0
+  local online_count=0
+  local last_event_ts="unknown"
+  local player_key
+  local player_name
+  local row
+  local idx
+
+  if [[ ! "$lines" =~ ^[0-9]+$ ]] || [[ "$lines" -le 0 ]]; then
+    log_error "Invalid line count '$lines'. Use a positive integer."
+    exit 1
+  fi
+
+  mkdir -p "$SCRIPT_DIR/state"
+
+  online_tmp_file="$(mktemp)"
+  log_info "Scanning last $lines container log lines for current online activity status"
+  if ! activity_collect_metrics "$lines" "$online_tmp_file"; then
+    rm -f "$online_tmp_file"
+    log_warn "Could not collect activity metrics from logs."
+    return 0
+  fi
+
+  matched_count="$ACTIVITY_METRICS_MATCHED_COUNT"
+  online_count="$ACTIVITY_METRICS_ONLINE_COUNT"
+  last_event_ts="$ACTIVITY_METRICS_LAST_EVENT_TS"
+
+  echo
+  echo "+------------------------------------------------------+"
+  echo "| Activity Status                                      |"
+  echo "+------------------------------------------------------+"
+  printf '| %-18s | %-29s |\n' "Scanned lines" "$lines"
+  printf '| %-18s | %-29s |\n' "Matched events" "$matched_count"
+  printf '| %-18s | %-29s |\n' "Online now" "$online_count"
+  printf '| %-18s | %-29s |\n' "Last event" "$last_event_ts"
+  echo "+------------------------------------------------------+"
+  echo "| Online players                                       |"
+  echo "+------------------------------------------------------+"
+
+  if [[ "$online_count" -eq 0 ]]; then
+    printf '| %-52s |\n' "(none)"
+  else
+    idx=1
+    while IFS=$'\t' read -r player_key player_name; do
+      if [[ -n "$player_name" ]]; then
+        row="$idx) $player_name [$player_key]"
+      else
+        row="$idx) $player_key"
+      fi
+      printf '| %-52.52s |\n' "$row"
+      idx=$((idx + 1))
+    done <"$online_tmp_file"
+  fi
+
+  rm -f "$online_tmp_file"
+
+  echo "+------------------------------------------------------+"
+
+  if [[ "$matched_count" -eq 0 ]]; then
+    log_warn "No join/leave patterns matched in the scanned log window."
+    log_info "Try: ./$SELF_NAME activity history $lines"
+  fi
+}
+
+player_events_basic_fallback() {
+  local lines="$1"
+  local events_file="$SCRIPT_DIR/logs/player-events.log"
+  local seen_file="$SCRIPT_DIR/state/player-events.seen"
+  local tmp_file
+  local log_tmp_file
+  local parsed_count=0
+  local new_count=0
+
+  mkdir -p "$SCRIPT_DIR/logs" "$SCRIPT_DIR/state"
+  touch "$events_file" "$seen_file"
+  tmp_file="$(mktemp)"
+  log_tmp_file="$(mktemp)"
+
+  log_warn "gawk is not available; using basic join/leave parser."
+  log_info "Scanning last $lines container log lines for structured join/leave events (basic mode)"
+  dc logs --no-color --timestamps --tail "$lines" "$SERVICE_NAME" 2>&1 | sed 's/\.[0-9]*Z/Z/' >"$log_tmp_file"
+
+  awk '
+        {
+            line = $0
+            low = tolower(line)
+            ts = ""
+            player = ""
+            type = ""
+            reason = ""
+
+            if (match(line, /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[^ ]+/)) {
+                ts = substr(line, RSTART, RLENGTH)
+            } else {
+                ts = strftime("%Y-%m-%dT%H:%M:%SZ")
+            }
+
+            if (low ~ /lognet: join succeeded:/) {
+                sub(/.*[Jj]oin succeeded:[[:space:]]*/, "", line)
+                player = line
+                type = "join"
+                reason = "lognet_join"
+            } else if (low ~ /lognet: leave:/) {
+                sub(/.*[Ll]eave:[[:space:]]*/, "", line)
+                player = line
+                type = "leave"
+                reason = "lognet_leave"
+            }
+
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", player)
+            if (player != "" && player != "INVALID" && player != "NULL") {
+                print ts "\t" type "\t" player "\t" reason "\t"
+            }
+        }
+      ' "$log_tmp_file" >"$tmp_file"
+
+  while IFS=$'\t' read -r event_ts event_type event_player event_reason event_name; do
+    [[ -z "$event_ts" ]] && continue
+    parsed_count=$((parsed_count + 1))
+
+    local event_id
+    local json_line
+    event_id="$event_ts|$event_type|$event_player|$event_reason"
+
+    if grep -Fqx "$event_id" "$seen_file"; then
+      continue
+    fi
+
+    printf '%s\n' "$event_id" >>"$seen_file"
+
+    if command -v jq >/dev/null 2>&1; then
+      json_line="$(jq -cn \
+        --arg ts "$event_ts" \
+        --arg type "$event_type" \
+        --arg player "$event_player" \
+        --arg reason "$event_reason" \
+        '{ts:$ts, type:$type, player:$player, reason:$reason}')"
+    else
+      json_line="{\"ts\":\"$(json_escape "$event_ts")\",\"type\":\"$(json_escape "$event_type")\",\"player\":\"$(json_escape "$event_player")\",\"reason\":\"$(json_escape "$event_reason")\"}"
+    fi
+
+    printf '%s\n' "$json_line" | tee -a "$events_file"
+    new_count=$((new_count + 1))
+  done <"$tmp_file"
+
+  rm -f "$tmp_file" "$log_tmp_file"
+
+  if [[ "$parsed_count" -eq 0 ]]; then
+    log_warn "No join/leave patterns matched in the scanned log window."
+    return 0
+  fi
+
+  if [[ "$new_count" -eq 0 ]]; then
+    log_info "No new unique events detected (all matched events were already recorded)."
+    return 0
+  fi
+
+  log_ok "Appended $new_count new events to $events_file"
+  return 0
+}
+
 player_events() {
   local lines="${1:-4000}"
   local events_file="$SCRIPT_DIR/logs/player-events.log"
@@ -1303,6 +1737,12 @@ player_events() {
 
   mkdir -p "$SCRIPT_DIR/logs" "$SCRIPT_DIR/state"
   touch "$events_file" "$seen_file" "$identities_file"
+
+  if ! command -v gawk >/dev/null 2>&1; then
+    player_events_basic_fallback "$lines"
+    return $?
+  fi
+
   tmp_file="$(mktemp)"
   log_tmp_file="$(mktemp)"
   identity_tmp_file="$(mktemp)"
@@ -1311,7 +1751,7 @@ player_events() {
   dc logs --no-color --timestamps --tail "$lines" "$SERVICE_NAME" 2>&1 | sed 's/\.[0-9]*Z/Z/' >"$log_tmp_file"
 
   # Update persistent identity map from account summary and login lines.
-  awk '
+  gawk '
         function trim(v) {
             gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
             return v
@@ -1340,7 +1780,7 @@ player_events() {
     known_names["$event_id_key"]="$event_name"
   done <"$identities_file"
 
-  awk '
+  gawk '
             function is_invalid_player(player) {
                 player = toupper(player)
                 return (player == "" || player == "INVALID" || player == "NULL")
@@ -1693,23 +2133,28 @@ run_activity() {
   history)
     player_history "${2:-1200}"
     ;;
+  status)
+    activity_status "${2:-4000}"
+    ;;
   help | -h | --help)
     cat <<EOF
 Usage:
-  $SELF_NAME activity [events|history] [lines]
+  $SELF_NAME activity [events|history|status] [lines]
 
 Modes:
   events   Emit structured join/leave JSON events.
   history  Show raw matched activity lines.
+  status   Show current online count and player list (best-effort).
 
 Examples:
   $SELF_NAME activity
   $SELF_NAME activity events 4000
   $SELF_NAME activity history 1200
+  $SELF_NAME activity status 4000
 EOF
     ;;
   *)
-    log_error "Unknown activity mode '$mode'. Use: events, history"
+    log_error "Unknown activity mode '$mode'. Use: events, history, status"
     exit 1
     ;;
   esac
@@ -2222,15 +2667,15 @@ restore_preview() {
       # Interactive: show list
       log_info "Available backups:"
       local i
-      for (( i=0; i<${#all_archives[@]}; i++ )); do
-        printf '  [%d] %s\n' "$(( i + 1 ))" "$(basename "${all_archives[$i]}")"
+      for ((i = 0; i < ${#all_archives[@]}; i++)); do
+        printf '  [%d] %s\n' "$((i + 1))" "$(basename "${all_archives[$i]}")"
       done
       local selection
       read -r -p "$(prompt_text "Select archive [1-${#all_archives[@]}]: ")" selection
-      if ! [[ "$selection" =~ ^[0-9]+$ ]] || (( selection < 1 || selection > ${#all_archives[@]} )); then
+      if ! [[ "$selection" =~ ^[0-9]+$ ]] || ((selection < 1 || selection > ${#all_archives[@]})); then
         fatal_return "Invalid selection: $selection" "Run ./$SELF_NAME restore-preview and choose a number from the list."
       fi
-      archive_path="${all_archives[$(( selection - 1 ))]}"
+      archive_path="${all_archives[$((selection - 1))]}"
     fi
   fi
 
