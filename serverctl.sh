@@ -926,7 +926,7 @@ restart_server() {
 
 status_server() {
   local container_name running compose_state compose_status compose_name health
-  local activity_lines=4000
+  local activity_since="24h"
   local online_tmp_file
   local online_now="unknown"
   local last_event="unknown"
@@ -964,7 +964,7 @@ status_server() {
   health="${health:-unknown}"
 
   online_tmp_file="$(mktemp)"
-  if activity_collect_metrics "$activity_lines" "$online_tmp_file"; then
+  if activity_collect_metrics "" "$online_tmp_file" "$activity_since"; then
     online_now="$ACTIVITY_METRICS_ONLINE_COUNT"
     last_event="$ACTIVITY_METRICS_LAST_EVENT_TS"
     players_short="$(awk -F'\t' 'NR<=3 { entry = ($2 != "" ? $2 " [" $1 "]" : $1); if (out == "") out = entry; else out = out ", " entry } END { print out }' "$online_tmp_file")"
@@ -1447,6 +1447,7 @@ ACTIVITY_METRICS_LAST_EVENT_TS="unknown"
 activity_collect_metrics() {
   local lines="$1"
   local online_out_file="$2"
+  local since="${3:-}"
   local identities_file="$SCRIPT_DIR/state/player-identities.tsv"
   local log_tmp_file
   local parsed_tmp_file
@@ -1472,9 +1473,16 @@ activity_collect_metrics() {
   log_tmp_file="$(mktemp)"
   parsed_tmp_file="$(mktemp)"
 
-  if ! dc logs --no-color --timestamps --tail "$lines" "$SERVICE_NAME" 2>&1 | sed 's/\.[0-9]*Z/Z/' >"$log_tmp_file"; then
-    rm -f "$log_tmp_file" "$parsed_tmp_file"
-    return 1
+  if [[ -n "$since" ]]; then
+    if ! dc logs --no-color --timestamps --since "$since" "$SERVICE_NAME" 2>&1 | sed 's/\.[0-9]*Z/Z/' >"$log_tmp_file"; then
+      rm -f "$log_tmp_file" "$parsed_tmp_file"
+      return 1
+    fi
+  else
+    if ! dc logs --no-color --timestamps --tail "$lines" "$SERVICE_NAME" 2>&1 | sed 's/\.[0-9]*Z/Z/' >"$log_tmp_file"; then
+      rm -f "$log_tmp_file" "$parsed_tmp_file"
+      return 1
+    fi
   fi
 
   awk '

@@ -531,7 +531,9 @@ If command `3` returns lines repeatedly, check outbound connectivity and firewal
 
 For a machine-readable snapshot, use `./windrose status-json`.
 
-`./windrose status` shows a compact operator dashboard: container state and health, currently online players (parsed from recent container logs), last activity event timestamp, backup age, and notifier status. It does not require the `notify` background process to be running — player data is read directly from container logs. Use `./windrose activity status` for a more detailed activity diagnostic.
+`./windrose status` shows a compact operator dashboard: container state and health, currently online players (parsed from the last 24 hours of container logs), last activity event timestamp, backup age, and notifier status. It does not require the `notify` background process to be running — player data is read directly from container logs. Using a 24-hour log window means players active for many hours will still appear correctly.
+
+`./windrose activity status` is a focused diagnostic tool for player activity: it shows how many log lines were scanned, how many join/leave events were matched, and the full list of online players without a display cap. Use it when you want to verify the parser is working or diagnose a mismatch between expected and reported online counts. You can pass a custom line count: `./windrose activity status 8000`.
 
 For quick player activity extraction from logs, use `./windrose activity history [lines]`.
 
