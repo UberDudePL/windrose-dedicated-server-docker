@@ -797,6 +797,17 @@ Common quick fixes:
 | Config reset after restart                | Edit JSON only when container is stopped                              |
 | Server not visible to players             | Share the `InviteCode` from `ServerDescription.json`                  |
 | Players have issues after a game patch    | Keep the dedicated server version updated to match the game version   |
+| Server fails to start or crashes silently in Proxmox | Set CPU type to `host` in the VM/LXC settings (see below)  |
+
+### Proxmox VM and LXC
+
+If you are hosting this server inside a Proxmox VM or LXC container, set the CPU type to `host` in the Proxmox configuration for that VM or container.
+
+Proxmox's default CPU types (for example `kvm64`) omit instruction sets that Wine and the server binary may depend on. This can cause the server to fail to start, crash at runtime, or fail silently with no useful log output.
+
+In the Proxmox web UI: VM → Hardware → Processors → Type → `host`.
+
+Using `host` CPU type passes the physical CPU's full instruction set through to the VM, which is required for Wine to run the dedicated server binary reliably.
 
 ---
 
