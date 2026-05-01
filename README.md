@@ -67,8 +67,8 @@ Additional documents:
 | OS             | Ubuntu 22.04+ / Debian 12+ (Linux host) |
 | Docker         | 24.x+                                   |
 | Docker Compose | v2.x (`docker compose`)                 |
-| RAM            | 8 GB (16 GB recommended for 4 players)  |
-| Disk           | 8 GB free for game files                |
+| RAM            | 8 GB (2 players) · 12 GB (4 players) · 16 GB (10 players) |
+| Disk           | 35 GB SSD                               |
 
 ---
 
@@ -248,7 +248,7 @@ Set `NO_COLOR=1` to disable ANSI colors in helper/CLI output.
 | `USE_DIRECT_CONNECTION`           | `false`     | Set to `true` to allow players to connect directly via IP instead of invite code. Requires port forwarding.                |
 | `DIRECT_CONNECTION_SERVER_PORT`   | `7777`      | Port used for direct connection (TCP and UDP). Only applies when `USE_DIRECT_CONNECTION=true`                              |
 | `DIRECT_CONNECTION_PROXY_ADDRESS` | `0.0.0.0`   | Proxy address for direct connection. Only applies when `USE_DIRECT_CONNECTION=true`                                        |
-| `USER_SELECTED_REGION`            | empty       | Connection service region: `SEA`, `CIS`, `EU`. Leave empty to auto-detect                                                  |
+| `USER_SELECTED_REGION`            | empty       | Connection service region: `SEA`, `CIS`, `EU`. Leave empty to auto-detect. `EU` covers both EU and NA regions              |
 | `PORT`                            | `7777`      | Game port (UDP)                                                                                                            |
 | `QUERYPORT`                       | `7778`      | Query port (UDP)                                                                                                           |
 | `WINDROSE_APP_ID`                 | `4129620`   | Steam AppID                                                                                                                |
@@ -332,11 +332,29 @@ Gameplay difficulty is stored per world in `WorldDescription.json` and is not co
    data/R5/Saved/SaveProfiles/Default/RocksDB/<GameVersion>/Worlds/<WorldIslandId>/WorldDescription.json
    ```
 
-4. For an Easy preset, ensure these fields match:
+4. Set the preset fields in `WorldDescription.json`. Reference values per preset:
 
-   - `WorldDescription.WorldPresetType = "Easy"`
-   - `WorldDescription.WorldSettings.TagParameters["{\"TagName\": \"WDS.Parameter.CombatDifficulty\"}"].TagName = "WDS.Parameter.CombatDifficulty.Easy"`
-   - `WorldDescription.WorldSettings.BoolParameters["{\"TagName\": \"WDS.Parameter.EasyExplore\"}"] = true`
+   **Easy**
+   - `WorldPresetType = "Easy"`
+   - `MobHealthMultiplier = 0.7`, `MobDamageMultiplier = 0.6`
+   - `ShipsHealthMultiplier = 0.7`, `ShipsDamageMultiplier = 0.6`
+   - `BoardingDifficultyMultiplier = 0.7`
+   - `CombatDifficulty = Easy`
+   - `EasyExplore = true` *(disables map markers — shown as "Immersive exploration" in-game; despite the name, this makes exploration harder)*
+
+   **Medium** (default)
+   - `WorldPresetType = "Medium"`
+   - All multipliers = `1.0`
+   - `CombatDifficulty = Normal`
+   - `EasyExplore = false`
+
+   **Hard**
+   - `WorldPresetType = "Hard"`
+   - `MobHealthMultiplier = 1.5`, `MobDamageMultiplier = 1.25`
+   - `ShipsHealthMultiplier = 1.5`, `ShipsDamageMultiplier = 1.25`
+   - `BoardingDifficultyMultiplier = 1.5`
+   - `CombatDifficulty = Hard`
+   - `EasyExplore = false`
 
 5. Start the server:
 
@@ -379,6 +397,23 @@ If any of these mismatch, the server may generate a new world and rewrite IDs on
 - For predictable outcomes, either:
    - Use preset values only, or
    - Intentionally manage a full custom profile and treat `WorldPresetType` as `Custom`.
+
+### Custom preset parameters
+
+> **Note:** It is generally easier to configure these settings in-game first, then copy the resulting values from your local save file to the server.
+
+| Parameter | Default | Range | Description |
+| :--- | :---: | :---: | :--- |
+| `CoopQuests` | `true` | — | Auto-completes co-op quests for all active players |
+| `EasyExplore` | `false` | — | Disables map markers ("Immersive exploration" in-game). Despite the name, makes exploration harder |
+| `MobHealthMultiplier` | `1.0` | `0.2`–`5.0` | Enemy health multiplier |
+| `MobDamageMultiplier` | `1.0` | `0.2`–`5.0` | Enemy damage multiplier |
+| `ShipHealthMultiplier` | `1.0` | `0.4`–`5.0` | Enemy ship health multiplier |
+| `ShipDamageMultiplier` | `1.0` | `0.2`–`2.5` | Enemy ship damage multiplier |
+| `BoardingDifficultyMultiplier` | `1.0` | `0.2`–`5.0` | Enemy sailors needed to win boarding |
+| `Coop_StatsCorrectionModifier` | `1.0` | `0.0`–`2.0` | Scales enemy health by active player count |
+| `Coop_ShipStatsCorrectionModifier` | `0.0` | `0.0`–`2.0` | Scales enemy ship health by active player count |
+| `CombatDifficulty` | `Normal` | `Easy`/`Normal`/`Hard` | Boss aggression level |
 
 ### Safe config edit workflow
 

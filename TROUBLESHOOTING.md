@@ -116,21 +116,73 @@ Also test from a different network (for example mobile hotspot) to confirm wheth
 
 ## LAN clients fail, WAN clients work
 
-If the server runs in Docker bridge mode on Linux and LAN clients are dropped after about 10 seconds, this is often an ICE/STUN consent issue caused by host NAT (MASQUERADE).
+If the server runs in Docker bridge mode on Linux and LAN clients are dropped after about 10 seconds, this is an ICE/STUN consent failure caused by Docker's MASQUERADE NAT rule rewriting the source IP on LAN-bound packets.
 
 Typical symptoms:
 
-- WAN clients connect, LAN clients fail
-- Server logs contain `Check consent was failed for IceControlling. Reach timeout 10000 ms`
+- WAN clients connect, LAN clients fail after ~10 seconds
+- Server logs contain: `Check consent was failed for IceControlling. Reach timeout 10000 ms`
 
-Practical checklist:
+### Fix — Part 1: bypass MASQUERADE on the Docker host
 
-1. Confirm whether you are on bridge networking (custom setups) vs host networking.
-2. On the Docker host, add a NAT bypass rule for traffic from container subnet to LAN subnet.
-3. On LAN clients, add a route back to the Docker subnet via the server host LAN IP.
-4. Re-test and confirm ICE consent succeeds in logs.
+1. Find the container's internal IP:
 
-For this repository default (`network_mode: host`), this specific bridge-NAT issue is usually not applicable.
+	```bash
+	docker inspect windrose | grep '"IPAddress"'
+	```
+
+2. Add a NAT bypass rule scoped to this container and your LAN subnet:
+
+	```bash
+	sudo iptables -t nat -I POSTROUTING -s <container_ip>/32 -d <lan_subnet>/24 -j RETURN
+	# Example:
+	sudo iptables -t nat -I POSTROUTING -s 172.17.0.2/32 -d 192.168.1.0/24 -j RETURN
+	```
+
+	Using `/32` scopes the rule to only this container; other containers are unaffected.
+
+3. Persist the rule across reboots:
+
+	```bash
+	sudo apt-get install -y iptables-persistent
+	sudo netfilter-persistent save
+	```
+
+> ⚠ **Caveat:** Container IP can change when the container is recreated. After `docker compose up`, verify the IP with `docker inspect` and update the iptables rule if needed.
+
+### Fix — Part 2: add a route on the LAN client
+
+The client must be able to route replies back to the container subnet.
+
+**Windows** (elevated CMD or PowerShell):
+
+```cmd
+route add 172.17.0.0 MASK 255.255.0.0 <server_host_lan_ip> -p
+```
+
+**Linux**:
+
+```bash
+sudo ip route add 172.17.0.0/16 via <server_host_lan_ip>
+```
+
+**macOS**:
+
+```bash
+sudo route add -net 172.17.0.0/16 <server_host_lan_ip>
+```
+
+### Verify
+
+After applying both parts, check server logs for successful ICE consent:
+
+```bash
+docker compose logs windrose | grep -i "Nominated\|Consented\|Succeeded"
+```
+
+Expected: `Nominated pair Succeeded` and `CheckConsent ... Consented pair ... Succeeded`.
+
+> **Note:** For this repository's default (`network_mode: host`), Docker bridge NAT is bypassed entirely and this fix is not needed.
 
 ---
 
