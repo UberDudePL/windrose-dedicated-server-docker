@@ -100,10 +100,8 @@ RUN set -eux; \
     wait "$xvfb_pid" 2>/dev/null || true; \
     trap - EXIT
 
-COPY entrypoint.sh /entrypoint.sh
-COPY healthcheck.sh /healthcheck.sh
 COPY scripts /opt/windrose/scripts
-RUN chmod +x /entrypoint.sh /healthcheck.sh /opt/windrose/scripts/*.sh
+RUN chmod +x /opt/windrose/scripts/*.sh
 
 # Keep the container entrypoint running as root so it can adjust mounted
 # volume ownership and then launch the server process as the steam user.
