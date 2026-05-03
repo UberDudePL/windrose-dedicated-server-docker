@@ -154,7 +154,7 @@ docker compose logs -f windrose
 Recommended image tags:
 
 ```text
-Stable: ghcr.io/uberdudepl/windrose-dedicated-server-docker:v1.6.0
+Stable: ghcr.io/uberdudepl/windrose-dedicated-server-docker:v1.6.1
 Latest: ghcr.io/uberdudepl/windrose-dedicated-server-docker:latest
 Staging fallback: ghcr.io/uberdudepl/windrose-dedicated-server-docker:staging
 Debug tools: ghcr.io/uberdudepl/windrose-dedicated-server-docker:debug
@@ -164,7 +164,7 @@ Set the image version in `.env` with:
 
 ```dotenv
 IMAGE_REPOSITORY=ghcr.io/uberdudepl/windrose-dedicated-server-docker
-IMAGE_TAG=v1.6.0
+IMAGE_TAG=v1.6.1
 ```
 
 ### Image variants
@@ -234,7 +234,7 @@ Set `NO_COLOR=1` to disable ANSI colors in helper/CLI output.
 | `CONTAINER_NAME`                  | `windrose`  | Change only if you run more than one server on the same host                                                               |
 | `HOSTNAME`                        | `localhost` | Internal container hostname used by ICE candidate discovery; keep `localhost` unless custom name resolves inside container |
 | `IMAGE_REPOSITORY`                | GHCR repo   | Published image repository                                                                                                 |
-| `IMAGE_TAG`                       | `v1.6.0`    | Stable image tag to run                                                                                                    |
+| `IMAGE_TAG`                       | `v1.6.1`    | Stable image tag to run                                                                                                    |
 | `PUID`                            | `1000`      | User id used for mounted files                                                                                             |
 | `PGID`                            | `1000`      | Group id used for mounted files                                                                                            |
 | `UPDATE_ON_START`                 | `true`      | Update and validate server files on startup                                                                                |
@@ -839,7 +839,7 @@ Using `host` CPU type passes the physical CPU's full instruction set through to 
 
 ## Image versions
 
-- Most users should keep `IMAGE_TAG=v1.6.0` for a stable server.
+- Most users should keep `IMAGE_TAG=v1.6.1` for a stable server.
 - Use `latest` only for testing.
 - Use `staging` only as a fallback for Wine compatibility issues on a specific host.
 - Use `debug` when you need extra troubleshooting tools inside the image.
@@ -906,7 +906,7 @@ Use `./windrose update-log [lines]` to quickly inspect recent update details fro
 
 ### What is the difference between stable and latest?
 
-Use a pinned version tag such as `v1.6.0` for production stability. Use `latest` only when you want the newest changes for testing.
+Use a pinned version tag such as `v1.6.1` for production stability. Use `latest` only when you want the newest changes for testing.
 For developer image channels (dev, dev-staging, dev-debug), see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## Practical operator guides
