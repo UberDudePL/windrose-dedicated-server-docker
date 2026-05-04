@@ -1492,6 +1492,7 @@ activity_collect_metrics() {
             ts = ""
             player = ""
             type = ""
+            tmp = ""
 
             if (match(line, /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[^ ]+/)) {
                 ts = substr(line, RSTART, RLENGTH)
@@ -1507,11 +1508,17 @@ activity_collect_metrics() {
                 sub(/.*[Ll]eave:[[:space:]]*/, "", line)
                 player = line
                 type = "leave"
-            } else if (match(line, /Name '\''([^'\'']+)'\''.*State '\''SaidFarewell'\''/, m)) {
-                player = m[1]
+            } else if (line ~ /Name '\''[^'\'']+'\''.*State '\''SaidFarewell'\''/) {
+                tmp = line
+                sub(/^.*Name '\''/, "", tmp)
+                sub(/'\''.*$/, "", tmp)
+                player = tmp
                 type = "leave"
-            } else if (match(low, /disconnectaccount.*accountid[[:space:]]+([a-z0-9]+)/, m)) {
-                player = toupper(m[1])
+            } else if (low ~ /disconnectaccount.*accountid[[:space:]]+[a-z0-9]+/) {
+                tmp = low
+                sub(/^.*disconnectaccount.*accountid[[:space:]]+/, "", tmp)
+                sub(/[^a-z0-9].*$/, "", tmp)
+                player = toupper(tmp)
                 type = "leave"
             }
 
