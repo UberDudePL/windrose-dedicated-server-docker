@@ -21,6 +21,7 @@ MODE="${WINDROSE_MODE:-auto}"
 DOCKER_BIN="${DOCKER_BIN:-}"
 SELF_NAME="${WINDROSE_CMD_NAME:-$(basename "$0")}"
 SERVER_DESC_FILE="$SCRIPT_DIR/data/R5/ServerDescription.json"
+APP_MANIFEST_FILE="$SCRIPT_DIR/data/steamapps/appmanifest_4129620.acf"
 ROCKSDB_DIR="$SCRIPT_DIR/data/R5/Saved/SaveProfiles/Default/RocksDB"
 WORLD_NAME_PENDING_FILE=".windrose-world-name"
 UPDATE_LOG_DIR="$SCRIPT_DIR/logs"
@@ -281,6 +282,7 @@ Usage:
   $SELF_NAME pull
   $SELF_NAME update [--force-down]
   $SELF_NAME update-log [lines]
+  $SELF_NAME share
   $SELF_NAME down
   $SELF_NAME install [target]
 
@@ -291,6 +293,7 @@ Sections:
   Worlds        worlds, worlds-check, worlds-prune, switch
   Data safety   backup, restore-preview, install-backup-cron
   Updates       pull, update, update-log
+  Access        share
 
 Notes:
   - compose directory: $COMPOSE_DIR
@@ -385,6 +388,79 @@ detect_world_version() {
   fi
 
   find "$ROCKSDB_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | sort -V | tail -n 1
+}
+
+detect_game_version() {
+  local deployment_id=""
+  local build_id=""
+
+  if [[ -f "$SERVER_DESC_FILE" ]] && command -v jq >/dev/null 2>&1; then
+    deployment_id="$(jq -r '.DeploymentId // empty' "$SERVER_DESC_FILE" 2>/dev/null || true)"
+    deployment_id="${deployment_id//$'\n'/}"
+    if [[ -n "$deployment_id" && "$deployment_id" != "null" ]]; then
+      printf '%s' "$deployment_id"
+      return 0
+    fi
+  fi
+
+  if [[ -f "$APP_MANIFEST_FILE" ]]; then
+    build_id="$(awk -F'"' '$2 == "buildid" || $2 == "TargetBuildID" { print $4; exit }' "$APP_MANIFEST_FILE" 2>/dev/null || true)"
+    build_id="${build_id//$'\n'/}"
+    if [[ -n "$build_id" ]]; then
+      printf '%s' "$build_id"
+      return 0
+    fi
+  fi
+
+  printf '%s' "unknown"
+}
+
+detect_game_update_status() {
+  local manifest_data target_build_id build_id bytes_to_download
+
+  if [[ ! -f "$APP_MANIFEST_FILE" ]]; then
+    printf '%s' "unknown"
+    return 0
+  fi
+
+  manifest_data="$(awk -F'"' '
+    $2 == "TargetBuildID" && target == "" { target = $4 }
+    $2 == "buildid" && build == "" { build = $4 }
+    $2 == "BytesToDownload" && bytes == "" { bytes = $4 }
+    END { printf "%s\t%s\t%s", target, build, bytes }
+  ' "$APP_MANIFEST_FILE" 2>/dev/null || true)"
+
+  IFS=$'\t' read -r target_build_id build_id bytes_to_download <<<"$manifest_data"
+
+  target_build_id="${target_build_id//$'\n'/}"
+  build_id="${build_id//$'\n'/}"
+  bytes_to_download="${bytes_to_download//$'\n'/}"
+
+  if [[ -n "$target_build_id" && -n "$build_id" && "$target_build_id" != "$build_id" ]]; then
+    printf '%s' "available"
+    return 0
+  fi
+
+  if [[ -n "$bytes_to_download" ]]; then
+    if [[ "$bytes_to_download" =~ ^[0-9]+$ ]]; then
+      if ((bytes_to_download > 0)); then
+        printf '%s' "available"
+        return 0
+      fi
+    else
+      printf '%s' "unknown"
+      return 0
+    fi
+  fi
+
+  if [[ -n "$target_build_id" && -n "$build_id" && "$target_build_id" == "$build_id" ]]; then
+    if [[ -z "$bytes_to_download" || "$bytes_to_download" == "0" ]]; then
+      printf '%s' "up-to-date"
+      return 0
+    fi
+  fi
+
+  printf '%s' "unknown"
 }
 
 generate_world_id() {
@@ -926,6 +1002,8 @@ restart_server() {
 
 status_server() {
   local container_name running compose_state compose_status compose_name health
+  local game_version="unknown"
+  local update_status="unknown"
   local activity_since="24h"
   local online_tmp_file
   local online_now="unknown"
@@ -962,6 +1040,9 @@ status_server() {
   health="$("${DOCKER_CMD[@]}" inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container_name" 2>/dev/null || true)"
   health="${health//$'\n'/}"
   health="${health:-unknown}"
+
+  game_version="$(detect_game_version)"
+  update_status="$(detect_game_update_status)"
 
   online_tmp_file="$(mktemp)"
   if activity_collect_metrics "" "$online_tmp_file" "$activity_since"; then
@@ -1055,6 +1136,8 @@ status_server() {
   screen_kv "health:" "$health"
 
   screen_section "Game/Activity"
+  screen_kv "game version:" "$game_version"
+  screen_kv "update status:" "$update_status"
   screen_kv "online now:" "$online_now"
   screen_kv "players:" "$players_short"
   screen_kv "last event:" "$last_event"
@@ -1090,6 +1173,7 @@ status_server() {
 status_json() {
   local container_name running health="unknown"
   local invite_code="" world_id="" server_name=""
+  local update_status="unknown"
   local generated_at
 
   container_name="$(dotenv_value CONTAINER_NAME || true)"
@@ -1106,6 +1190,7 @@ status_json() {
   if [[ -z "$health" ]]; then
     health="not-found"
   fi
+  update_status="$(detect_game_update_status)"
   generated_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
   if [[ -f "$SERVER_DESC_FILE" ]] && command -v jq >/dev/null 2>&1; then
@@ -1121,6 +1206,7 @@ status_json() {
       --arg container "$container_name" \
       --arg running "$running" \
       --arg health "$health" \
+      --arg update_status "$update_status" \
       --arg invite_code "$invite_code" \
       --arg world_id "$world_id" \
       --arg server_name "$server_name" \
@@ -1131,15 +1217,29 @@ status_json() {
                 container: $container,
                 running: ($running == "true"),
                 health: $health,
+                update_status: $update_status,
                 invite_code: $invite_code,
                 world_id: $world_id,
                 server_name: $server_name,
                 generated_at: $generated_at
             }'
   else
-    printf '{"mode":"%s","service":"%s","container":"%s","running":%s,"health":"%s","invite_code":"%s","world_id":"%s","server_name":"%s","generated_at":"%s"}\n' \
-      "$ACTIVE_MODE" "$SERVICE_NAME" "$container_name" "$running" "$health" "$invite_code" "$world_id" "$server_name" "$generated_at"
+    printf '{"mode":"%s","service":"%s","container":"%s","running":%s,"health":"%s","update_status":"%s","invite_code":"%s","world_id":"%s","server_name":"%s","generated_at":"%s"}\n' \
+      "$ACTIVE_MODE" "$SERVICE_NAME" "$container_name" "$running" "$health" "$update_status" "$invite_code" "$world_id" "$server_name" "$generated_at"
   fi
+}
+
+share_access() {
+  local invite_code server_password server_name
+
+  invite_code="$(jq -r '.ServerDescription_Persistent.InviteCode // .InviteCode // empty' "$SERVER_DESC_FILE" 2>/dev/null || true)"
+  server_name="$(jq -r '.ServerDescription_Persistent.ServerName // empty' "$SERVER_DESC_FILE" 2>/dev/null || true)"
+  server_password="$(dotenv_value SERVER_PASSWORD 2>/dev/null || true)"
+
+  screen_title "Windrose Server Access"
+  screen_kv "server name:" "${server_name:-(not set)}"
+  screen_kv "invite code:" "${invite_code:-(not set)}"
+  screen_kv "password:"    "${server_password:-(none)}"
 }
 
 status_snapshot() {
@@ -3583,6 +3683,9 @@ pull)
   ;;
 update)
   update_server "${2:-}"
+  ;;
+share)
+  share_access
   ;;
 update-log)
   show_update_log "${2:-120}"
