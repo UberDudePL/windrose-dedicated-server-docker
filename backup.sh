@@ -100,6 +100,9 @@ dotenv_value() {
 }
 
 DATA_DIR="${DATA_DIR:-$SCRIPT_DIR/data}"
+SAVE_PROFILES_DEFAULT_DIR="$DATA_DIR/R5/Saved/SaveProfiles/Default"
+ROCKSDB_V2_DIR="$SAVE_PROFILES_DEFAULT_DIR/RocksDB_v2"
+ROCKSDB_V1_DIR="$SAVE_PROFILES_DEFAULT_DIR/RocksDB"
 BACKUP_DIR="${BACKUP_DIR:-$(dotenv_value BACKUP_DIR || true)}"
 BACKUP_DIR="${BACKUP_DIR:-$SCRIPT_DIR/backups}"
 if [[ "$BACKUP_DIR" != /* ]]; then
@@ -478,6 +481,20 @@ screen_kv "format:" "$BACKUP_FORMAT"
 screen_kv "source:" "$DATA_DIR"
 screen_kv "output dir:" "$BACKUP_DIR"
 screen_kv "retention:" "${BACKUP_RETENTION_DAYS} days"
+
+if [[ "$BACKUP_SCOPE" == "save" || "$BACKUP_SCOPE" == "both" ]]; then
+  log_info "Backup scope '$BACKUP_SCOPE' archives the full R5/Saved tree; RocksDB and RocksDB_v2 are both included when present."
+
+  if [[ -d "$ROCKSDB_V2_DIR" && -d "$ROCKSDB_V1_DIR" ]]; then
+    log_info "Detected save roots: RocksDB and RocksDB_v2. Both will be archived."
+  elif [[ -d "$ROCKSDB_V2_DIR" ]]; then
+    log_info "Detected save root: RocksDB_v2. It will be archived."
+  elif [[ -d "$ROCKSDB_V1_DIR" ]]; then
+    log_info "Detected save root: RocksDB. It will be archived."
+  else
+    log_warn "No RocksDB save root detected under $SAVE_PROFILES_DEFAULT_DIR. R5/Saved will still be archived as configured."
+  fi
+fi
 
 if ! check_players_online; then
   exit 1

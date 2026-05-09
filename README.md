@@ -154,7 +154,7 @@ docker compose logs -f windrose
 Recommended image tags:
 
 ```text
-Stable: ghcr.io/uberdudepl/windrose-dedicated-server-docker:v1.6.3
+Stable: ghcr.io/uberdudepl/windrose-dedicated-server-docker:v1.6.4
 Latest: ghcr.io/uberdudepl/windrose-dedicated-server-docker:latest
 Staging fallback: ghcr.io/uberdudepl/windrose-dedicated-server-docker:staging
 Debug tools: ghcr.io/uberdudepl/windrose-dedicated-server-docker:debug
@@ -164,7 +164,7 @@ Set the image version in `.env` with:
 
 ```dotenv
 IMAGE_REPOSITORY=ghcr.io/uberdudepl/windrose-dedicated-server-docker
-IMAGE_TAG=v1.6.3
+IMAGE_TAG=v1.6.4
 ```
 
 ### Image variants
@@ -237,7 +237,7 @@ If your host is slow to start the container after `./windrose update`, increase 
 | `CONTAINER_NAME`                  | `windrose`  | Change only if you run more than one server on the same host                                                               |
 | `HOSTNAME`                        | `localhost` | Internal container hostname used by ICE candidate discovery; keep `localhost` unless custom name resolves inside container |
 | `IMAGE_REPOSITORY`                | GHCR repo   | Published image repository                                                                                                 |
-| `IMAGE_TAG`                       | `v1.6.3`    | Stable image tag to run                                                                                                    |
+| `IMAGE_TAG`                       | `v1.6.4`    | Stable image tag to run                                                                                                    |
 | `PUID`                            | `1000`      | User id used for mounted files                                                                                             |
 | `PGID`                            | `1000`      | Group id used for mounted files                                                                                            |
 | `UPDATE_ON_START`                 | `true`      | Update and validate server files on startup                                                                                |
@@ -656,6 +656,8 @@ data/R5/Saved/SaveProfiles/Default/RocksDB_v2/<game-version>/Worlds/
 
 Each world is a folder named with its world ID (for example `EC10598E83A14ED04D9C44CBFBF3F4B1`). The server loads the world whose ID matches `WorldIslandId` in `ServerDescription.json`.
 
+Operator note: if both `RocksDB` and `RocksDB_v2` exist at the same time, `./windrose switch` still changes one global `WorldIslandId` value in `ServerDescription.json`, independent of layout. Save backups with scope `save` or `both` archive the whole `R5/Saved` tree, so both `RocksDB` and `RocksDB_v2` are included when present.
+
 ### Transfer a save from singleplayer or another server
 
 ⚠ Always back up your saves first. Also shut down both the dedicated server and the game client before copying files.
@@ -853,7 +855,7 @@ Using `host` CPU type passes the physical CPU's full instruction set through to 
 
 ## Image versions
 
-- Most users should keep `IMAGE_TAG=v1.6.3` for a stable server.
+- Most users should keep `IMAGE_TAG=v1.6.4` for a stable server.
 - Use `latest` only for testing.
 - Use `staging` only as a fallback for Wine compatibility issues on a specific host.
 - Use `debug` when you need extra troubleshooting tools inside the image.
@@ -920,7 +922,7 @@ Use `./windrose update-log [lines]` to quickly inspect recent update details fro
 
 ### What is the difference between stable and latest?
 
-Use a pinned version tag such as `v1.6.3` for production stability. Use `latest` only when you want the newest changes for testing.
+Use a pinned version tag such as `v1.6.4` for production stability. Use `latest` only when you want the newest changes for testing.
 For developer image channels (dev, dev-staging, dev-debug), see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## Practical operator guides

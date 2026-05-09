@@ -417,6 +417,23 @@ set_active_save_root() {
   [[ -n "$ACTIVE_SAVE_ROOT" ]]
 }
 
+other_save_root() {
+  if [[ "$ACTIVE_SAVE_ROOT" == "$ROCKSDB_V2_DIR" ]]; then
+    printf '%s' "$ROCKSDB_V1_DIR"
+  else
+    printf '%s' "$ROCKSDB_V2_DIR"
+  fi
+}
+
+world_exists_in_save_root() {
+  local save_root="$1"
+  local world_id="$2"
+
+  [[ -z "$save_root" || -z "$world_id" || ! -d "$save_root" ]] && return 1
+
+  find "$save_root" -mindepth 3 -maxdepth 3 -type d -path "*/Worlds/$world_id" -print -quit 2>/dev/null | grep -q .
+}
+
 detect_game_version() {
   local deployment_id=""
   local build_id=""
@@ -921,6 +938,7 @@ worlds_prune() {
 switch_world() {
   local version worlds_dir current_world_id current_server_name was_running=""
   local selected_id choice tmp_file created_new="false" new_world_name=""
+  local secondary_save_root="" selected_exists_in_active_root="false"
   local -a world_ids=()
 
   require_jq
@@ -946,6 +964,10 @@ switch_world() {
 
   worlds_dir="$(worlds_dir_for_version "$version")"
   mkdir -p "$worlds_dir"
+
+  log_info "Switch updates WorldIslandId globally in ServerDescription.json and applies regardless of save layout (RocksDB or RocksDB_v2)."
+
+  secondary_save_root="$(other_save_root)"
 
   current_world_id="$(jq -r '.ServerDescription_Persistent.WorldIslandId // empty' "$SERVER_DESC_FILE")"
   if [[ -z "$current_world_id" || "$current_world_id" == "null" ]]; then
@@ -1007,6 +1029,17 @@ switch_world() {
   tmp_file="$SERVER_DESC_FILE.tmp"
   jq --arg world_id "$selected_id" '.ServerDescription_Persistent.WorldIslandId = $world_id' "$SERVER_DESC_FILE" >"$tmp_file"
   mv "$tmp_file" "$SERVER_DESC_FILE"
+
+  if [[ -d "$ROCKSDB_V2_DIR" && -d "$ROCKSDB_V1_DIR" ]]; then
+    if [[ -d "$worlds_dir/$selected_id" ]]; then
+      selected_exists_in_active_root="true"
+    fi
+
+    if [[ "$selected_exists_in_active_root" != "true" ]] && world_exists_in_save_root "$secondary_save_root" "$selected_id"; then
+      log_warn "Selected world ID '$selected_id' exists in the other save root, but not in the active root: $ACTIVE_SAVE_ROOT"
+      log_info "Next step: restore or migrate this world into the active root before starting, then run ./$SELF_NAME switch again if needed."
+    fi
+  fi
 
   if [[ "$created_new" == "true" ]]; then
     if [[ -n "$new_world_name" ]]; then
