@@ -277,6 +277,31 @@ or
 data/R5/Saved/SaveProfiles/Default/RocksDB_v2/<GameVersion>/Worlds/<WorldIslandId>
 ```
 
+### Save directory layout
+
+Depending on game updates and migration history, you may see:
+
+- **RocksDB** — old main saves before game update 0.10.0.5.120. If you have not updated the game, your saves are here.
+- **RocksDB_v2** — new runtime folder used while the game is running (after update 0.10.0.5.120). ⚠️ Do not edit this directly during gameplay; it is re-created constantly.
+- **RocksDB_v2_Backups** — auto-saved backups created at intervals and on world exit (after update 0.10.0.5.120). Each backup is a `.zip` file named `<WorldID>_<GameVersion>_Latest.zip` and similar.
+
+Helper commands (`./windrose worlds`, `./windrose worlds-check`, `./windrose switch`) automatically detect which root (`RocksDB` or `RocksDB_v2`) is active and use it.
+
+### AutoLoadLatestBackupIfHasBroken setting
+
+In `ServerDescription.json`, the field `AutoLoadLatestBackupIfHasBroken` controls auto-recovery on startup:
+
+```json
+"AutoLoadLatestBackupIfHasBroken": false
+```
+
+- When `true`: if the server detects broken save files, it attempts to restore from the latest backup in `RocksDB_v2_Backups`.
+- When `false`: the server skips auto-recovery and may generate a new world if the current save is corrupted.
+
+If your world consistently loads with corruption errors or appears empty, try setting this to `true`. However, if all three world ID values do not match (see [Troubleshooting — World ID mismatch](TROUBLESHOOTING.md#world-id-mismatch--server-generates-new-world-on-startup)), the server will generate a new world regardless of this setting.
+
+### Active world selection
+
 The active world is selected by `ServerDescription.json`:
 
 ```json
@@ -715,6 +740,41 @@ Operator note: if both `RocksDB` and `RocksDB_v2` exist at the same time, `./win
 7. **Server to client transfer**: reverse the same steps in the opposite direction. If the game asks, choose **local** saves.
 
 > **Note:** The `<game-version>` path segment is version-specific (for example `0.8.0`). Use the exact version directory that contains your world.
+
+### Safe restore — copy the full profile
+
+If standard world-folder restore does not work (world loads but remains empty, or generates a new world on startup), copy the entire SaveProfiles directory instead:
+
+1. **Stop the server**:
+   ```bash
+   ./windrose stop
+   ```
+
+2. **On your local machine, locate the SaveProfiles folder**:
+   - Steam: `C:\Users\{UserName}\AppData\Local\R5\Saved\SaveProfiles\{YourProfile}\`
+   - EGS: `C:\Users\{UserName}\AppData\Local\R5\Saved\SaveProfiles\{YourProfile}\`
+   - Stove: `C:\Users\{UserName}\AppData\Local\R5\Saved\SaveProfiles\StoveDefault\`
+
+3. **Copy the entire profile to the server as `Default`**:
+   ```bash
+   scp -r "C:\Users\{UserName}\AppData\Local\R5\Saved\SaveProfiles\{YourProfile}" user@yourserver:/windrose/data/R5/Saved/SaveProfiles/Default
+   ```
+
+   This copies the full directory structure, including all version folders and RocksDB/RocksDB_v2 databases.
+
+4. **Start the server**:
+   ```bash
+   ./windrose start
+   ```
+
+5. **Verify** — the server should load your world with its full state:
+   ```bash
+   ./windrose logs
+   ./windrose worlds
+   ./windrose worlds-check
+   ```
+
+> **When to use this method:** If copying individual world folders resulted in empty maps or new worlds being generated, copying the entire profile preserves all save metadata and can resolve the issue. This is a more conservative approach when precise restore is difficult to diagnose.
 
 ---
 

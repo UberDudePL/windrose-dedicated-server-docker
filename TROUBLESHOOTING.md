@@ -115,6 +115,82 @@ Also test from a different network (for example mobile hotspot) to confirm wheth
 
 ---
 
+## World ID mismatch — server generates new world on startup
+
+If the server generates a fresh, empty world on every startup instead of loading your existing world, the most common cause is a mismatch between three critical values.
+
+### How the server decides which world to load
+
+When the dedicated server starts, it compares:
+
+1. **WorldIslandId** in `data/R5/ServerDescription.json`
+2. **Folder name** on disk under `.../Worlds/<folder_name>`
+3. **islandId** field inside `WorldDescription.json` (within that folder)
+
+If all three values match exactly, the server loads the existing world.
+If any one mismatches, the server assumes this is a fresh install and generates a new world, overwriting the `WorldIslandId` in `ServerDescription.json`.
+
+### Diagnostic steps
+
+1. **Stop the server first** — do not edit config on a running server:
+   ```bash
+   ./windrose stop
+   ```
+
+2. **Check the current WorldIslandId**:
+   ```bash
+   cat data/R5/ServerDescription.json | grep -i WorldIslandId
+   ```
+
+3. **List existing world folders**:
+   ```bash
+   ls -la data/R5/Saved/SaveProfiles/Default/RocksDB_v2/*/Worlds/ 2>/dev/null || ls -la data/R5/Saved/SaveProfiles/Default/RocksDB/*/Worlds/
+   ```
+   Note the folder names — these are world IDs.
+
+4. **For each world folder, check its islandId**:
+   ```bash
+   cat data/R5/Saved/SaveProfiles/Default/RocksDB_v2/<version>/Worlds/<WorldID>/WorldDescription.json | grep -i islandId
+   # or for RocksDB (old layout):
+   cat data/R5/Saved/SaveProfiles/Default/RocksDB/<version>/Worlds/<WorldID>/WorldDescription.json | grep -i islandId
+   ```
+
+5. **Compare all three values**:
+   - Does `ServerDescription.json WorldIslandId` match the folder name?
+   - Does the folder name match the `islandId` in `WorldDescription.json`?
+   - Are all three identical?
+
+### Fix — align the three values
+
+If they don't match:
+
+1. Choose the **correct world ID** (the one with your save data).
+2. Update `ServerDescription.json` to use that ID:
+   ```bash
+   cat data/R5/ServerDescription.json | sed 's/"WorldIslandId": "[^"]*"/"WorldIslandId": "<correct_id>"/' > temp.json && mv temp.json data/R5/ServerDescription.json
+   ```
+   Or edit manually with a text editor.
+
+3. If the folder name doesn't match the ID:
+   ```bash
+   mv data/R5/Saved/SaveProfiles/Default/RocksDB_v2/<version>/Worlds/<old_name> data/R5/Saved/SaveProfiles/Default/RocksDB_v2/<version>/Worlds/<correct_id>
+   ```
+
+4. Start the server and verify:
+   ```bash
+   ./windrose start
+   ./windrose logs | grep -i "loading world"
+   ```
+
+### When the IDs match but new worlds still appear
+
+If all three values are correct but the server still generates a new world on startup, the save data itself may be corrupted. In that case:
+
+- See [Recover corrupted saves (manual restoration)](https://windrose.support/faq/recover-corrupted-saves-manual-restoration) for the official upstream recovery guide
+- Or try restoring from a recent backup inside `RocksDB_v2_Backups` (see AutoLoadLatestBackupIfHasBroken in README.md)
+
+---
+
 ## LAN clients fail, WAN clients work
 
 If the server runs in Docker bridge mode on Linux and LAN clients are dropped after about 10 seconds, this is an ICE/STUN consent failure caused by Docker's MASQUERADE NAT rule rewriting the source IP on LAN-bound packets.
