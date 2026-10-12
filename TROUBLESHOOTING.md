@@ -66,7 +66,7 @@ Legacy aliases are still supported for backward compatibility: `./windrose playe
 | Config reset after restart                                                           | Edit JSON only when container is stopped                                                                                                                                               |
 | Players have issues after a game patch                                               | Keep the dedicated server version updated to match the game version                                                                                                                    |
 
-For `Windrose server executable not found`, startup retries once and preserves the Steam app manifest when one exists. If recovery fails, inspect the SteamCMD logs and any manifest backup in `data/steamapps`; saves are not removed.
+For `Windrose server executable not found`, startup retries once with SteamCMD explicitly targeting Windows depots. It preserves the manifest as `appmanifest_<APPID>.acf.windrose-backup-v2`; a backup from the previous recovery (`.windrose-backup`) does not block this retry. If recovery still fails, inspect the SteamCMD logs and the versioned backup in `data/steamapps`; saves are not removed.
 
 ---
 

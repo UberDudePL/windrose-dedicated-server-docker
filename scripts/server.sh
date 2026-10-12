@@ -34,12 +34,13 @@ update_server() {
   run_as_steam "mkdir -p $(quote "$SERVERDIR") && /opt/steamcmd/steamcmd.sh +quit" >/dev/null 2>&1 || true
 
   log_info "Updating or validating server files"
+  log_info "Forcing Windows platform for SteamCMD depots"
   local attempts=0
   local exit_code=0
   while [ "$attempts" -lt 3 ]; do
     attempts=$((attempts + 1))
 
-    if run_as_steam "mkdir -p $(quote "$SERVERDIR") && /opt/steamcmd/steamcmd.sh +force_install_dir $(quote "$SERVERDIR") $login_cmd +app_update $(quote "$APPID") validate +quit"; then
+    if run_as_steam "mkdir -p $(quote "$SERVERDIR") && /opt/steamcmd/steamcmd.sh +@sSteamCmdForcePlatformType windows +force_install_dir $(quote "$SERVERDIR") $login_cmd +app_update $(quote "$APPID") validate +quit"; then
       return 0
     else
       exit_code=$?
@@ -65,7 +66,8 @@ find_server_exe() {
 
 repair_missing_server_install() {
   local app_manifest="$SERVERDIR/steamapps/appmanifest_${APPID}.acf"
-  local manifest_backup="${app_manifest}.windrose-backup"
+  local manifest_backup="${app_manifest}.windrose-backup-v2"
+  local legacy_manifest_backup="${app_manifest}.windrose-backup"
   local manifest_preserved=false
 
   if [[ "$UPDATE_ON_START" != "true" ]]; then
@@ -76,6 +78,10 @@ repair_missing_server_install() {
   if [[ -e "$manifest_backup" ]]; then
     log_error "Previous missing-executable repair is still pending; preserved manifest: $manifest_backup"
     return 1
+  fi
+
+  if [[ -e "$legacy_manifest_backup" ]]; then
+    log_warn "Found a manifest backup from the previous recovery; preserving it and retrying with the Windows platform"
   fi
 
   if [[ -f "$app_manifest" ]]; then
