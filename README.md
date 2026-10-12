@@ -939,8 +939,8 @@ docker compose up -d
 - `stop_grace_period: 90s` — allows the server to save before shutdown
 - Optional env-based patching can update `ServerDescription.json` automatically
 - Healthcheck can fail on recent fatal runtime log patterns, not just missing process state
-- Canonical runtime scripts are under `/opt/windrose/scripts/*`; root-level script files are compatibility wrappers
-- Compatibility wrappers are kept for backward compatibility and may be removed in a future major release after deprecation notice
+- Canonical runtime scripts are under `/opt/windrose/scripts/`, including `entrypoint.sh` and `healthcheck.sh`
+- Root-level compatibility wrappers have been removed
 
 ---
 

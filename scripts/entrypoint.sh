@@ -55,7 +55,12 @@ update_server
 
 SERVER_EXE=$(find_server_exe)
 if [ -z "$SERVER_EXE" ]; then
-  log_error "Windrose server executable not found"
+  repair_missing_server_install || true
+  SERVER_EXE=$(find_server_exe)
+fi
+
+if [ -z "$SERVER_EXE" ]; then
+  log_error "Windrose server executable not found after SteamCMD update and repair"
   find "$SERVERDIR" -maxdepth 4 || true
   exit 1
 fi

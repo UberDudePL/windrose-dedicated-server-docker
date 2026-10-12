@@ -41,9 +41,10 @@ update_server() {
 
     if run_as_steam "mkdir -p $(quote "$SERVERDIR") && /opt/steamcmd/steamcmd.sh +force_install_dir $(quote "$SERVERDIR") $login_cmd +app_update $(quote "$APPID") validate +quit"; then
       return 0
+    else
+      exit_code=$?
     fi
 
-    exit_code=$?
     if [ "$exit_code" -eq 254 ]; then
       log_warn "SteamCMD self-updated (exit 254), retrying ($attempts/3)"
       sleep 2
@@ -60,6 +61,55 @@ update_server() {
 
 find_server_exe() {
   find "$SERVERDIR" -iname 'WindroseServer-Win64-Shipping.exe' | head -n 1 || true
+}
+
+repair_missing_server_install() {
+  local app_manifest="$SERVERDIR/steamapps/appmanifest_${APPID}.acf"
+  local manifest_backup="${app_manifest}.windrose-backup"
+  local manifest_preserved=false
+
+  if [[ "$UPDATE_ON_START" != "true" ]]; then
+    log_warn "UPDATE_ON_START=false, skipping automatic repair of missing server files"
+    return 1
+  fi
+
+  if [[ -e "$manifest_backup" ]]; then
+    log_error "Previous missing-executable repair is still pending; preserved manifest: $manifest_backup"
+    return 1
+  fi
+
+  if [[ -f "$app_manifest" ]]; then
+    if ! mv -- "$app_manifest" "$manifest_backup"; then
+      log_error "Could not preserve Steam app manifest before repairing the server install"
+      return 1
+    fi
+    manifest_preserved=true
+    log_warn "Server executable is missing; preserving the Steam app manifest and retrying installation"
+  else
+    log_warn "Server executable is missing and no Steam app manifest exists; retrying installation"
+  fi
+
+  if ! update_server; then
+    if [[ "$manifest_preserved" == "true" ]]; then
+      log_error "SteamCMD repair attempt failed; manifest preserved at $manifest_backup"
+    else
+      log_error "SteamCMD repair attempt failed; no app manifest was available to preserve"
+    fi
+    return 1
+  fi
+
+  if [[ -n "$(find_server_exe)" ]]; then
+    rm -f -- "$manifest_backup"
+    log_ok "Server files were restored successfully"
+    return 0
+  fi
+
+  if [[ "$manifest_preserved" == "true" ]]; then
+    log_error "SteamCMD reported success but the server executable is still missing; preserved manifest: $manifest_backup"
+  else
+    log_error "SteamCMD reported success but the server executable is still missing; no app manifest was available to preserve"
+  fi
+  return 1
 }
 
 server_launch_args() {

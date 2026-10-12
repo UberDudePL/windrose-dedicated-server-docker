@@ -66,6 +66,8 @@ Legacy aliases are still supported for backward compatibility: `./windrose playe
 | Config reset after restart                                                           | Edit JSON only when container is stopped                                                                                                                                               |
 | Players have issues after a game patch                                               | Keep the dedicated server version updated to match the game version                                                                                                                    |
 
+For `Windrose server executable not found`, startup retries once and preserves the Steam app manifest when one exists. If recovery fails, inspect the SteamCMD logs and any manifest backup in `data/steamapps`; saves are not removed.
+
 ---
 
 ## Client cannot connect (quick checklist)
@@ -185,6 +187,7 @@ If they don't match:
    ```
 
 4. Start the server and verify:
+
    ```bash
    ./windrose start
    ./windrose logs | grep -i "loading world"
@@ -297,7 +300,7 @@ In `docker-compose.yml`, under the `windrose` service, add:
 
 ```yaml
 security_opt:
-	- seccomp:unconfined
+  - seccomp:unconfined
 ```
 
 Restart the container. This disables all seccomp filtering for the container.
@@ -312,7 +315,7 @@ In `docker-compose.yml`:
 
 ```yaml
 security_opt:
-	- seccomp:/path/to/custom-seccomp.json
+  - seccomp:/path/to/custom-seccomp.json
 ```
 
 This is the preferred fix for production environments.
